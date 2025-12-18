@@ -1,0 +1,18 @@
+with-expecter: true
+dir: "internal/mocks"
+outpkg: mocks
+mockname: "Mock{{.InterfaceName}}"
+filename: "mock_{{.InterfaceName | snakecase}}.go"
+resolve-type-alias: false
+disable-version-string: true
+issue-845-fix: true
+
+packages:
+  github.com/JoshuaPangaribuan/dbot/internal/pkg/logger:
+    interfaces:
+      Logger:
+      
+  github.com/JoshuaPangaribuan/dbot/internal/pkg/discord:
+    interfaces:
+      Feature:
+      CommandProvider:

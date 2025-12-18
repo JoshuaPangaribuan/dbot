@@ -1,0 +1,3 @@
+discord:
+  # Prefer providing the token via DISCORD_TOKEN env var.
+  token: "<YOUR_DISCORD_BOT_TOKEN>"
