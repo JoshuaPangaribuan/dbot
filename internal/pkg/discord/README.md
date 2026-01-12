@@ -390,6 +390,27 @@ bot, err := discord.New("your-token",
 | `WithOnConnect(fn)` | Callback when bot connects |
 | `WithOnDisconnect(fn)` | Callback when bot disconnects |
 | `WithOnResumed(fn)` | Callback when session resumes |
+| `WithShardCount(n)` | Start `n` gateway shards in-process (IDs `0..n-1`) |
+| `WithAutoSharding()` | Use Discord `GatewayBot` to pick shard count + startup limits |
+| `WithGatewayBot(enabled)` | Enable/disable `GatewayBot` startup probing |
+| `WithIdentifyDelay(d)` | Delay between identifies per concurrency bucket (default `5s`) |
+| `WithShardMaxConcurrency(n)` | Override Discord `max_concurrency` (prefer `GatewayBot`) |
+
+#### Sharding
+
+For large bots, Discord requires gateway sharding. Best practice is:
+
+1. Call `GatewayBot` to get the recommended shard count and `session_start_limit.max_concurrency`.
+2. Start shards in identify "buckets" (`shard_id % max_concurrency`) with a delay between identifies in the same bucket (commonly 5 seconds).
+3. Sync slash commands once per process (not per shard).
+
+This framework supports many shards in one binary:
+
+```go
+bot, err := discord.New(token,
+    discord.WithAutoSharding(), // uses GatewayBot recommended shard count + max_concurrency
+)
+```
 
 #### Lifecycle States
 
@@ -414,7 +435,8 @@ stateDiagram-v2
 | `Close()` | Shutdown features, remove commands, disconnect |
 | `EventBus()` | Get the event bus for manual subscriptions |
 | `State()` | Get the shared state store |
-| `Session()` | Get the underlying discordgo session |
+| `Session()` | Get the primary discordgo session (shard 0 when present) |
+| `Sessions()` | Get all shard sessions (one per gateway shard) |
 
 ---
 
@@ -1212,4 +1234,3 @@ discord/
     ├── modal.go        # Modal builder
     └── sent.go         # SentMessage operations
 ```
-

@@ -46,6 +46,24 @@ By default the app loads config from `opt/config/config.yaml`. Override with:
 export DBOT_CONFIG_PATH="path/to/config.yaml"
 ```
 
+### Sharding (large bots)
+
+If your bot requires gateway sharding, enable it via config:
+
+```yaml
+discord:
+  sharding:
+    enabled: true
+    auto: true
+```
+
+Or via env vars:
+
+```bash
+export DISCORD_SHARDING=true
+export DISCORD_AUTO_SHARDING=true
+```
+
 ### 4. Test in Discord
 
 - `/level` — displays your current level and XP

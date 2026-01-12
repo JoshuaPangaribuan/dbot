@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -37,7 +38,7 @@ func New() *application {
 func (a *application) Start() {
 	configPath := os.Getenv("DBOT_CONFIG_PATH")
 	if configPath == "" {
-		configPath = "opt/config/db.yaml"
+		configPath = "opt/config/config.yaml"
 	}
 
 	cfg, err := initConfig(configPath)
@@ -71,8 +72,89 @@ func (a *application) Start() {
 		panic("missing discord token")
 	}
 
+	// Sharding config (single binary, many shards)
+	// Defaults keep sharding disabled unless explicitly enabled.
+	shardEnabled := false
+	autoShards := false
+	shardCount := 1
+	useGatewayBot := true
+	identifyDelayStr := "5s"
+
+	if v := a.config.GetString("discord.sharding.enabled"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			shardEnabled = b
+		}
+	}
+	if v := a.config.GetString("discord.sharding.auto"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			autoShards = b
+		}
+	}
+	if n := a.config.GetInt("discord.sharding.count"); n > 0 {
+		shardCount = n
+	}
+	if v := a.config.GetString("discord.sharding.use_gateway_bot"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			useGatewayBot = b
+		}
+	}
+	if v := a.config.GetString("discord.sharding.identify_delay"); v != "" {
+		identifyDelayStr = v
+	}
+
+	// Env overrides (takes precedence over config)
+	if v := os.Getenv("DISCORD_SHARDING"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			shardEnabled = b
+		}
+	}
+	if v := os.Getenv("DISCORD_AUTO_SHARDING"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			autoShards = b
+		}
+	}
+	if v := os.Getenv("DISCORD_SHARD_COUNT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			shardCount = n
+		}
+	}
+	if v := os.Getenv("DISCORD_USE_GATEWAY_BOT"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			useGatewayBot = b
+		}
+	}
+	if v := os.Getenv("DISCORD_IDENTIFY_DELAY"); v != "" {
+		identifyDelayStr = v
+	}
+
+	if autoShards || shardCount > 1 {
+		shardEnabled = true
+	}
+
+	var identifyDelay time.Duration
+	if identifyDelayStr != "" {
+		if d, err := time.ParseDuration(identifyDelayStr); err == nil {
+			identifyDelay = d
+		}
+	}
+
 	// Setup Bot
-	bot, err := discord.New(token)
+	botOpts := []discord.Option{
+		discord.WithLogger(a.logger),
+	}
+	if shardEnabled {
+		botOpts = append(botOpts, discord.WithGatewayBot(useGatewayBot))
+		if identifyDelay > 0 {
+			botOpts = append(botOpts, discord.WithIdentifyDelay(identifyDelay))
+		}
+		if autoShards {
+			botOpts = append(botOpts, discord.WithAutoSharding())
+		} else if shardCount > 1 {
+			botOpts = append(botOpts, discord.WithShardCount(shardCount))
+		}
+	}
+
+	bot, err := discord.New(token, botOpts...)
 	if err != nil {
 		a.logger.Error(context.Background(), "Failed to create discord bot", logger.Fields{"error": err})
 		panic(err)

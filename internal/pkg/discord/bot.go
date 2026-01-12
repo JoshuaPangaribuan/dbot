@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/logger"
 	"github.com/bwmarrin/discordgo"
@@ -36,7 +37,8 @@ func (s botState) String() string {
 // Bot wraps a discordgo session with event bus, features, and lifecycle handling.
 type Bot struct {
 	mu       sync.RWMutex
-	session  *discordgo.Session
+	session  *discordgo.Session // primary session (also used for REST calls)
+	sessions []*discordgo.Session
 	eventBus *EventBus
 	store    *StateStore
 	logger   logger.Logger
@@ -51,6 +53,13 @@ type Bot struct {
 
 	baseCtx context.Context
 	guildID string // empty for global commands
+
+	// Sharding config
+	shardCount      int
+	autoShards      bool
+	useGatewayBot   bool
+	identifyDelay   time.Duration
+	maxConcurrency  int
 
 	// Lifecycle state (atomic for lock-free reads)
 	state atomic.Int32
@@ -107,6 +116,52 @@ func WithLogger(l logger.Logger) Option {
 	}
 }
 
+// WithShardCount runs the bot with multiple gateway shards in a single process.
+// Shards [0..count-1] will be started. count must be >= 1.
+func WithShardCount(count int) Option {
+	return func(b *Bot) {
+		if count >= 1 {
+			b.shardCount = count
+		}
+	}
+}
+
+// WithAutoSharding uses Discord's GatewayBot endpoint to determine the recommended shard count.
+// This follows Discord guidance for sharding at scale.
+func WithAutoSharding() Option {
+	return func(b *Bot) {
+		b.autoShards = true
+	}
+}
+
+// WithGatewayBot enables/disables fetching GatewayBot info (recommended shards + session start limits).
+// When sharding is enabled, this is enabled by default.
+func WithGatewayBot(enabled bool) Option {
+	return func(b *Bot) {
+		b.useGatewayBot = enabled
+	}
+}
+
+// WithIdentifyDelay configures the per-bucket identify delay when starting shards.
+// Discord imposes an identify limit per concurrency bucket (commonly 5 seconds).
+func WithIdentifyDelay(d time.Duration) Option {
+	return func(b *Bot) {
+		if d > 0 {
+			b.identifyDelay = d
+		}
+	}
+}
+
+// WithShardMaxConcurrency overrides the max_concurrency value used for shard startup.
+// Prefer leaving this unset and letting GatewayBot provide the correct value.
+func WithShardMaxConcurrency(max int) Option {
+	return func(b *Bot) {
+		if max > 0 {
+			b.maxConcurrency = max
+		}
+	}
+}
+
 // New creates a new Bot with the given token and options.
 func New(token string, opts ...Option) (*Bot, error) {
 	if token == "" {
@@ -118,21 +173,18 @@ func New(token string, opts ...Option) (*Bot, error) {
 		return nil, fmt.Errorf("discord: create session: %w", err)
 	}
 
-	// Set required intents for message content, guild messages, voice, and reactions
-	session.Identify.Intents = discordgo.IntentsGuildMessages |
-		discordgo.IntentMessageContent |
-		discordgo.IntentsDirectMessages |
-		discordgo.IntentsGuildVoiceStates |
-		discordgo.IntentsGuildMessageReactions
-
 	bot := &Bot{
-		session:  session,
-		eventBus: NewEventBus(),
-		store:    NewStateStore(),
-		logger:   logger.New(),
-		features: make([]Feature, 0),
-		commands: make(map[string]*Command),
-		baseCtx:  context.Background(),
+		session:       session,
+		sessions:      []*discordgo.Session{session},
+		eventBus:      NewEventBus(),
+		store:         NewStateStore(),
+		logger:        logger.New(),
+		features:      make([]Feature, 0),
+		commands:      make(map[string]*Command),
+		baseCtx:       context.Background(),
+		shardCount:    1,
+		useGatewayBot: true,
+		identifyDelay: 5 * time.Second,
 	}
 	bot.state.Store(int32(stateNew))
 
@@ -140,20 +192,65 @@ func New(token string, opts ...Option) (*Bot, error) {
 		opt(bot)
 	}
 
-	// Register event handlers
-	session.AddHandler(bot.handleReady)
-	session.AddHandler(bot.handleConnect)
-	session.AddHandler(bot.handleDisconnect)
-	session.AddHandler(bot.handleResumed)
-	session.AddHandler(bot.handleInteractionCreate)
-	session.AddHandler(bot.handleMessageCreate)
-	session.AddHandler(bot.handleVoiceStateUpdate)
-	session.AddHandler(bot.handleMessageReactionAdd)
-	session.AddHandler(bot.handleMessageReactionRemove)
+	// Set required intents for message content, guild messages, voice, and reactions
+	bot.session.Identify.Intents = discordgo.IntentsGuildMessages |
+		discordgo.IntentMessageContent |
+		discordgo.IntentsDirectMessages |
+		discordgo.IntentsGuildVoiceStates |
+		discordgo.IntentsGuildMessageReactions
+
+	// Register event handlers on the primary session.
+	bot.registerSessionHandlers(bot.session)
 
 	bot.logger.Info(context.Background(), "bot initialized", logger.Fields{"component": "discord"})
 
 	return bot, nil
+}
+
+func (b *Bot) registerSessionHandlers(s *discordgo.Session) {
+	if s == nil {
+		return
+	}
+	s.AddHandler(b.handleReady)
+	s.AddHandler(b.handleConnect)
+	s.AddHandler(b.handleDisconnect)
+	s.AddHandler(b.handleResumed)
+	s.AddHandler(b.handleInteractionCreate)
+	s.AddHandler(b.handleMessageCreate)
+	s.AddHandler(b.handleVoiceStateUpdate)
+	s.AddHandler(b.handleMessageReactionAdd)
+	s.AddHandler(b.handleMessageReactionRemove)
+}
+
+func (b *Bot) cloneSessionForShard(shardID, shardCount int) (*discordgo.Session, error) {
+	if b.session == nil {
+		return nil, errors.New("discord: cannot clone session before primary session exists")
+	}
+
+	s, err := discordgo.New(b.session.Identify.Token)
+	if err != nil {
+		return nil, fmt.Errorf("discord: create shard session: %w", err)
+	}
+
+	// Copy user-configurable settings from the primary session so behavior is consistent.
+	s.Debug = b.session.Debug
+	s.LogLevel = b.session.LogLevel
+	s.ShouldReconnectOnError = b.session.ShouldReconnectOnError
+	s.ShouldReconnectVoiceOnSessionError = b.session.ShouldReconnectVoiceOnSessionError
+	s.ShouldRetryOnRateLimit = b.session.ShouldRetryOnRateLimit
+	s.StateEnabled = b.session.StateEnabled
+	s.SyncEvents = b.session.SyncEvents
+	s.MaxRestRetries = b.session.MaxRestRetries
+	s.Client = b.session.Client
+	s.Dialer = b.session.Dialer
+	s.UserAgent = b.session.UserAgent
+	s.Identify = b.session.Identify
+
+	s.ShardID = shardID
+	s.ShardCount = shardCount
+
+	b.registerSessionHandlers(s)
+	return s, nil
 }
 
 // getState returns the current bot state.
@@ -194,6 +291,15 @@ func (b *Bot) Logger() logger.Logger {
 // Session returns the underlying discordgo session.
 func (b *Bot) Session() *discordgo.Session {
 	return b.session
+}
+
+// Sessions returns a copy of all shard sessions (len==1 when sharding is disabled).
+func (b *Bot) Sessions() []*discordgo.Session {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	out := make([]*discordgo.Session, len(b.sessions))
+	copy(out, b.sessions)
+	return out
 }
 
 // GuildID returns the configured guild ID (empty for global commands).
@@ -360,19 +466,53 @@ func (b *Bot) Open() error {
 		return errors.New("discord: bot has been closed")
 	}
 
-	// Open session WITHOUT holding the lock (network call)
-	if err := b.session.Open(); err != nil {
+	// Build shard sessions (may call REST to fetch GatewayBot info).
+	sessions, err := b.buildShardSessions()
+	if err != nil {
 		b.state.Store(int32(stateNew)) // Revert state
-		return fmt.Errorf("discord: open session: %w", err)
+		return err
 	}
+
+	// Open sessions WITHOUT holding the lock (network calls).
+	if err := b.openSessionsWithSharding(sessions); err != nil {
+		for _, s := range sessions {
+			if s != nil {
+				_ = s.Close()
+			}
+		}
+		b.state.Store(int32(stateNew)) // Revert state
+		return err
+	}
+
+	// Store sessions under lock only after successful startup.
+	b.mu.Lock()
+	b.sessions = sessions
+	// Keep b.session pointing at the primary (shard 0) session when present.
+	for _, s := range sessions {
+		if s != nil && s.ShardID == 0 {
+			b.session = s
+			break
+		}
+	}
+	// If shard 0 isn't present (custom shard sets), fall back to the first session.
+	if b.session == nil && len(sessions) > 0 {
+		b.session = sessions[0]
+	}
+	b.mu.Unlock()
 
 	// Sync commands WITHOUT holding the lock (network call)
 	if err := b.syncCommands(); err != nil {
-		if closeErr := b.session.Close(); closeErr != nil {
-			b.logger.Error(context.Background(), "failed to close session after sync commands failure", logger.Fields{
-				"component": "discord",
-				"error":     closeErr.Error(),
-			})
+		for _, s := range sessions {
+			if s == nil {
+				continue
+			}
+			if closeErr := s.Close(); closeErr != nil {
+				b.logger.Error(context.Background(), "failed to close session after sync commands failure", logger.Fields{
+					"component": "discord",
+					"error":     closeErr.Error(),
+					"shard_id":  s.ShardID,
+				})
+			}
 		}
 		b.state.Store(int32(stateNew)) // Revert state
 		return fmt.Errorf("discord: sync commands: %w", err)
@@ -390,6 +530,8 @@ func (b *Bot) Close() error {
 
 	// Copy features and hooks under lock to iterate safely
 	b.mu.RLock()
+	sessions := make([]*discordgo.Session, len(b.sessions))
+	copy(sessions, b.sessions)
 	features := make([]Feature, len(b.features))
 	copy(features, b.features)
 	hooks := make([]func(context.Context) error, len(b.shutdownHooks))
@@ -424,7 +566,7 @@ func (b *Bot) Close() error {
 	}
 
 	// Remove registered commands WITHOUT holding the lock (network calls)
-	if b.session.State != nil && b.session.State.User != nil {
+	if b.session != nil && b.session.State != nil && b.session.State.User != nil {
 		appID := b.session.State.User.ID
 		for _, cmd := range registeredCmds {
 			_ = b.session.ApplicationCommandDelete(appID, guildID, cmd.ID)
@@ -436,7 +578,16 @@ func (b *Bot) Close() error {
 	b.registeredCmds = nil
 	b.mu.Unlock()
 
-	return b.session.Close()
+	var firstErr error
+	for _, s := range sessions {
+		if s == nil {
+			continue
+		}
+		if err := s.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // syncCommands registers all commands with Discord using bulk overwrite (idempotent).
@@ -480,6 +631,174 @@ func (b *Bot) syncCommands() error {
 		"guild_id":  guildID,
 	})
 
+	return nil
+}
+
+func (b *Bot) buildShardSessions() ([]*discordgo.Session, error) {
+	b.mu.RLock()
+	shardCount := b.shardCount
+	autoShards := b.autoShards
+	useGatewayBot := b.useGatewayBot
+	maxConcurrency := b.maxConcurrency
+	identifyDelay := b.identifyDelay
+	baseSession := b.session
+	b.mu.RUnlock()
+
+	if baseSession == nil {
+		return nil, errors.New("discord: primary session is nil")
+	}
+
+	if autoShards && !useGatewayBot {
+		return nil, errors.New("discord: auto sharding requires GatewayBot")
+	}
+
+	// Auto-determine shard count and/or max concurrency using GatewayBot.
+	if useGatewayBot && (autoShards || shardCount > 1) {
+		gb, err := baseSession.GatewayBot()
+		if err != nil {
+			if autoShards {
+				return nil, fmt.Errorf("discord: fetch gateway bot info: %w", err)
+			}
+			// Non-fatal if sharding is configured explicitly; we'll fall back to safe defaults.
+		} else {
+			if autoShards {
+				shardCount = gb.Shards
+			}
+			if maxConcurrency <= 0 {
+				maxConcurrency = gb.SessionStartLimit.MaxConcurrency
+			}
+
+			if gb.SessionStartLimit.Remaining < shardCount {
+				return nil, fmt.Errorf(
+					"discord: session start limit too low to start %d shards (remaining=%d reset_after=%dms)",
+					shardCount,
+					gb.SessionStartLimit.Remaining,
+					gb.SessionStartLimit.ResetAfter,
+				)
+			}
+
+			b.logger.Info(context.Background(), "gateway bot info", logger.Fields{
+				"component":        "discord",
+				"recommended":      gb.Shards,
+				"max_concurrency":  gb.SessionStartLimit.MaxConcurrency,
+				"remaining":        gb.SessionStartLimit.Remaining,
+				"reset_after_ms":   gb.SessionStartLimit.ResetAfter,
+			})
+		}
+	}
+
+	if shardCount < 1 {
+		shardCount = 1
+	}
+	if identifyDelay <= 0 {
+		identifyDelay = 5 * time.Second
+	}
+
+	// Non-sharded.
+	if shardCount == 1 {
+		baseSession.ShardID = 0
+		baseSession.ShardCount = 1
+		return []*discordgo.Session{baseSession}, nil
+	}
+
+	// Default max concurrency for safety if GatewayBot wasn't available.
+	if maxConcurrency <= 0 {
+		maxConcurrency = 1
+	}
+
+	// Ensure the base session is shard 0.
+	baseSession.ShardID = 0
+	baseSession.ShardCount = shardCount
+
+	sessions := make([]*discordgo.Session, 0, shardCount)
+	sessions = append(sessions, baseSession)
+
+	// Create remaining shard sessions.
+	for shardID := 1; shardID < shardCount; shardID++ {
+		s, err := b.cloneSessionForShard(shardID, shardCount)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+
+	// Persist the runtime sharding knobs for startup/metrics.
+	b.mu.Lock()
+	b.shardCount = shardCount
+	b.maxConcurrency = maxConcurrency
+	b.identifyDelay = identifyDelay
+	b.mu.Unlock()
+
+	return sessions, nil
+}
+
+func (b *Bot) openSessionsWithSharding(sessions []*discordgo.Session) error {
+	if len(sessions) == 0 {
+		return nil
+	}
+	if len(sessions) == 1 {
+		if err := sessions[0].Open(); err != nil {
+			return fmt.Errorf("discord: open session: %w", err)
+		}
+		return nil
+	}
+
+	b.mu.RLock()
+	maxConcurrency := b.maxConcurrency
+	identifyDelay := b.identifyDelay
+	b.mu.RUnlock()
+
+	if maxConcurrency <= 0 {
+		maxConcurrency = 1
+	}
+	if identifyDelay <= 0 {
+		identifyDelay = 5 * time.Second
+	}
+
+	// Group sessions into Discord identify concurrency buckets:
+	// bucket = shard_id % max_concurrency
+	buckets := make(map[int][]*discordgo.Session, maxConcurrency)
+	for _, s := range sessions {
+		if s == nil {
+			continue
+		}
+		bucket := s.ShardID % maxConcurrency
+		buckets[bucket] = append(buckets[bucket], s)
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(sessions))
+
+	for bucket := 0; bucket < maxConcurrency; bucket++ {
+		shardSessions := buckets[bucket]
+		if len(shardSessions) == 0 {
+			continue
+		}
+
+		wg.Add(1)
+		go func(bucket int, shardSessions []*discordgo.Session) {
+			defer wg.Done()
+			for i, s := range shardSessions {
+				if err := s.Open(); err != nil {
+					errCh <- fmt.Errorf("discord: open shard %d/%d (bucket %d): %w", s.ShardID, s.ShardCount, bucket, err)
+					return
+				}
+				// Discord identifies are rate-limited per bucket; wait between shards in the same bucket.
+				if i < len(shardSessions)-1 {
+					time.Sleep(identifyDelay)
+				}
+			}
+		}(bucket, shardSessions)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

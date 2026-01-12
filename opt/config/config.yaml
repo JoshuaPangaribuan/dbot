@@ -1,3 +1,15 @@
 discord:
   # Prefer providing the token via DISCORD_TOKEN env var.
   token: "<YOUR_BOT_TOKEN>"
+
+  # Gateway sharding (single binary, many shards). Enable when your bot grows large.
+  sharding:
+    enabled: false
+    # If true, uses Discord GatewayBot recommended shard count.
+    auto: false
+    # Fixed shard count (ignored when auto=true). Use >1 to enable.
+    count: 1
+    # Whether to call GatewayBot for session start limits (recommended).
+    use_gateway_bot: true
+    # Delay between shard identifies within the same concurrency bucket.
+    identify_delay: "5s"
