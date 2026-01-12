@@ -40,7 +40,7 @@ export DISCORD_TOKEN="your-bot-token"
 go run .
 ```
 
-By default the app loads config from `opt/config/db.yaml`. Override with:
+By default the app loads config from `opt/config/config.yaml`. Override with:
 
 ```bash
 export DBOT_CONFIG_PATH="path/to/config.yaml"
@@ -48,32 +48,10 @@ export DBOT_CONFIG_PATH="path/to/config.yaml"
 
 ### 4. Test in Discord
 
-- `/ping` — replies with "pong"
-- `/echo text: hello` → bot replies `hello` to the channel
-- `!echo hello` — echoes "hello" back (message example)
-- Any message in a guild channel → bot reacts with `👍` (thumbs up example)
+- `/level` — displays your current level and XP
+- Send messages in a guild channel to earn XP and level up
 
-## Docker
-
-Build (final image is distroless + nonroot):
-
-```bash
-DOCKER_BUILDKIT=1 docker build -t dbot .
-```
-
-Run (recommended: provide token via env var, not config file):
-
-```bash
-docker run --rm \
-  -e DISCORD_TOKEN="your-bot-token" \
-  dbot
-```
-
-Optional: run tests in Docker:
-
-```bash
-DOCKER_BUILDKIT=1 docker build --target test .
-```
+The bot includes a levelling system that awards XP for messages and announces level-ups.
 
 ## Project Structure
 
@@ -85,14 +63,12 @@ DOCKER_BUILDKIT=1 docker build --target test .
 │   │   ├── app.go              # Bot initialization, signal handling
 │   │   ├── config.go           # Config loader setup
 │   │   └── log.go              # Logger setup
-│   ├── echo/                   # Example feature (slash command with params)
-│   ├── pingpong/               # Example feature (remove or rename)
-│   │   ├── feature.go          # Feature implementation
-│   │   ├── module.go           # Legacy module (for reference)
-│   │   ├── service/            # Business logic
-│   │   └── handlers/           # Legacy handlers (for reference)
-│   ├── thumbsup/               # Example feature (reacts 👍 to every message)
-│   │   └── feature.go          # Feature implementation
+│   ├── features/               # Feature implementations
+│   │   └── levelling/          # Example feature (XP/leveling system)
+│   │       ├── feature.go      # Feature registration & lifecycle
+│   │       ├── handlers/       # Discord event handlers
+│   │       ├── service/        # Business logic (XP calculations)
+│   │       └── persistence/    # Data persistence layer
 │   └── pkg/
 │       ├── discord/            # Discord bot framework
 │       │   ├── bot.go          # Bot core, session management
@@ -100,12 +76,13 @@ DOCKER_BUILDKIT=1 docker build --target test .
 │       │   ├── feature.go      # Feature interface
 │       │   ├── ctx.go          # Context wrappers
 │       │   ├── command.go      # Command definitions
-│       │   ├── mw.go           # Core middleware (IgnoreBot, RequireGuild)
-│       │   ├── reply/          # Reply & embed builders
-│       │   └── middleware/     # Built-in middleware
+│       │   ├── state.go        # State management
+│       │   ├── middleware/     # Built-in middleware
+│       │   └── reply/          # Reply & embed builders
 │       ├── config/             # Configuration abstraction
 │       └── logger/             # Logging abstraction
-└── opt/config/db.yaml          # Sample config file
+├── internal/mocks/             # Auto-generated mocks
+├── opt/config/config.yaml      # Configuration file
 ```
 
 ## Architecture
@@ -164,25 +141,40 @@ import (
 )
 
 type Feature struct {
-    bot *discord.Bot
+    bot    *discord.Bot
+    logger Logger
 }
 
-func New() *Feature {
-    return &Feature{}
+// Dependencies defines what this feature needs
+type Deps struct {
+    Bot    *discord.Bot
+    Logger Logger
 }
 
-func (f *Feature) Name() string { return "myfeature" }
+// Register sets up the feature with dependency injection
+func Register(deps Deps) {
+    f := &Feature{
+        bot:    deps.Bot,
+        logger: deps.Logger,
+    }
 
-func (f *Feature) Init(b *discord.Bot) error {
-    f.bot = b
-    return nil
+    // Subscribe to events
+    for _, sub := range f.Subscriptions() {
+        deps.Bot.EventBus().Subscribe(sub)
+    }
+
+    // Register commands
+    if provider, ok := f.(*Feature); ok {
+        cmds := provider.Commands()
+        for _, cmd := range cmds {
+            deps.Bot.SlashCommand(cmd.Name, cmd.Description, nil)
+        }
+    }
+
+    // Register shutdown handler
+    deps.Bot.RegisterShutdownHook(f.Shutdown)
 }
 
-func (f *Feature) Shutdown(ctx context.Context) error {
-    return nil
-}
-
-// Subscriptions returns event handlers for this feature.
 func (f *Feature) Subscriptions() []*discord.Subscription {
     return []*discord.Subscription{
         {
@@ -197,12 +189,15 @@ func (f *Feature) Subscriptions() []*discord.Subscription {
     }
 }
 
-// Commands implements discord.CommandProvider to register slash commands.
-// This is optional - only needed if your feature defines slash commands.
 func (f *Feature) Commands() []*discord.Command {
     return []*discord.Command{
         discord.NewSlashCommand("hello", "Says hello", nil),
     }
+}
+
+func (f *Feature) Shutdown(ctx context.Context) error {
+    // Cleanup resources
+    return nil
 }
 
 func (f *Feature) handleHello(ctx context.Context, e *discord.Event) error {
@@ -225,10 +220,10 @@ func (f *Feature) handleMessage(ctx context.Context, e *discord.Event) error {
 Register your feature in `internal/app/app.go`:
 
 ```go
-myFeature := myfeature.New()
-if err := bot.RegisterFeature(myFeature); err != nil {
-    panic(err)
-}
+myfeature.Register(myfeature.Deps{
+    Bot:    bot,
+    Logger: a.logger,
+})
 ```
 
 ### CommandProvider Interface
@@ -350,7 +345,7 @@ discord.Chain(mw1, mw2, mw3)
 ```go
 import "github.com/yourusername/my-bot/internal/pkg/discord/middleware"
 
-// Rate limit: 5 requests per 10 seconds per user
+// Rate limit: 5 requests per 10 seconds per user (sliding window)
 middleware.RateLimit(5, 10*time.Second)
 
 // Require NSFW channel
@@ -360,17 +355,23 @@ middleware.RequireNSFW()
 middleware.ContentFilterMiddleware(middleware.ContentFilterConfig{
     Filters: []middleware.ContentFilter{
         middleware.WordFilter("badword1", "badword2"),
-        middleware.InviteFilter(),
+        middleware.InviteFilter(),           // Block Discord invites
+        middleware.LinkFilter(),             // Block all URLs
+        middleware.MentionSpamFilter(5),     // Max 5 mentions
+        middleware.CapsFilter(0.7, 10),      // 70% caps, min 10 chars
+        middleware.RegexFilter(`\d{3,}`),    // Custom regex pattern
     },
-    Action:  middleware.FilterActionWarn,
+    Action:  middleware.FilterActionWarn,    // or FilterActionDelete
     Message: "Your message was removed.",
 })
 
-// Event logging
+// Event logging with duration tracking
 middleware.EventLogger(logger)
 
-// Permission check (requires EventPermissionChecker implementation)
+// Permission check (hybrid config + Discord roles)
+checker := middleware.NewHybridPermissionChecker(config)
 middleware.RequireEventPermission(checker, "admin")
+middleware.RequireAnyEventPermission(checker, "admin", "moderator")
 ```
 
 ### Using Middleware in Subscriptions
@@ -392,7 +393,7 @@ func (f *Feature) Subscriptions() []*discord.Subscription {
 
 ## Configuration
 
-Configuration is loaded from `opt/config/db.yaml` with environment variable overrides:
+Configuration is loaded from `opt/config/config.yaml` with environment variable overrides:
 
 ```yaml
 host: localhost
@@ -403,11 +404,88 @@ discord:
 
 The config system supports hot-reloading—changes to the file are picked up without restarting.
 
+**Config providers:**
+- **Viper Provider**: File watching with debouncing (100ms), supports YAML/JSON, thread-safe
+- **OS Provider**: Simple key-value access without file watching
+
+**Environment variables:**
+- `DISCORD_TOKEN`: Discord bot token (overrides config)
+- `DBOT_CONFIG_PATH`: Path to configuration file
+
+## Logging
+
+The framework provides pluggable logger providers with structured logging:
+
+**Slog Provider** (default):
+- Uses Go's standard `log/slog` with JSON output
+- Custom field ordering: time, level, caller, message
+- Automatic caller detection
+- Context field injection capability
+
+**Zap Provider** (high-performance):
+- Uses `go.uber.org/zap` for production scenarios
+- JSON encoding with production defaults
+- Call stack support
+
+```go
+// In app.go
+logger, err := logger.New(logger.ProviderSlog())
+// or
+logger, err := logger.New(logger.ProviderZap())
+```
+
+**Event Logging Middleware:**
+- Event type tracking with custom field extraction
+- User and channel information logging
+- Command and interaction details
+- Duration tracking for performance monitoring
+
+## Development Tooling
+
+The project includes comprehensive development tooling:
+
+**Linting:**
+- GolangCI-lint configured with essential linters
+- Static analysis, unused code detection, error checking
+
+**Testing:**
+- Mockery for generating test mocks
+- Comprehensive test suite with proper cleanup
+- Benchmark support
+
+**Build:**
+- Makefile with build targets
+- Static binary compilation (12MB)
+- Cross-platform support
+
+## Docker
+
+Multi-stage build with caching and distroless runtime:
+
+```bash
+# Build (final image is distroless + nonroot)
+DOCKER_BUILDKIT=1 docker build -t dbot .
+
+# Run (recommended: provide token via env var)
+docker run --rm \
+  -e DISCORD_TOKEN="your-bot-token" \
+  dbot
+
+# Run tests in Docker
+DOCKER_BUILDKIT=1 docker build --target test .
+```
+
+**Build stages:**
+1. **Deps**: Downloads and caches Go dependencies (Alpine-based)
+2. **Builder**: Compiles with optimizations and cache mounts
+3. **Test**: Runs test suite in isolation
+4. **Runtime**: Minimal distroless base with non-root user
+
 ## Discord Setup
 
 1. Create an application at [Discord Developer Portal](https://discord.com/developers/applications)
 2. Add a bot user and copy the token
-3. Enable **Message Content Intent** (required for `!echo` style commands)
+3. Enable necessary intents for your features
 4. Invite the bot with appropriate permissions (Send Messages, Use Slash Commands)
 
 ## License
