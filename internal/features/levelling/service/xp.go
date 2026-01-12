@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"sync"
 )
 
@@ -13,13 +14,13 @@ type Config struct {
 
 // Service defines the interface for XP and level operations (DIP).
 type Service interface {
-	AwardXP(userID string) (oldLevel, newLevel int)
-	GetXP(userID string) int
-	SetXP(userID string, xp int)
-	GetLevelForXP(xp int) int
-	GetNextThreshold(level int) int
-	GetAllUsers() map[string]int
-	UserCount() int
+	AwardXP(ctx context.Context, userID string) (oldLevel, newLevel int)
+	GetXP(ctx context.Context, userID string) int
+	SetXP(ctx context.Context, userID string, xp int)
+	GetLevelForXP(ctx context.Context, xp int) int
+	GetNextThreshold(ctx context.Context, level int) int
+	GetAllUsers(ctx context.Context) map[string]int
+	UserCount(ctx context.Context) int
 }
 
 // impl manages XP tracking and level calculations.
@@ -41,7 +42,7 @@ func New(cfg Config) Service {
 }
 
 // AwardXP adds XP for a user and returns the old and new levels.
-func (s *impl) AwardXP(userID string) (oldLevel, newLevel int) {
+func (s *impl) AwardXP(ctx context.Context, userID string) (oldLevel, newLevel int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -55,21 +56,21 @@ func (s *impl) AwardXP(userID string) (oldLevel, newLevel int) {
 }
 
 // GetXP returns the current XP for a user.
-func (s *impl) GetXP(userID string) int {
+func (s *impl) GetXP(ctx context.Context, userID string) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.xp[userID]
 }
 
 // SetXP sets the XP for a user (used for loading from persistence).
-func (s *impl) SetXP(userID string, xp int) {
+func (s *impl) SetXP(ctx context.Context, userID string, xp int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.xp[userID] = xp
 }
 
 // GetLevelForXP returns the level for a given XP amount.
-func (s *impl) GetLevelForXP(xp int) int {
+func (s *impl) GetLevelForXP(ctx context.Context, xp int) int {
 	level := 0
 	for _, threshold := range s.config.Thresholds {
 		if xp >= threshold {
@@ -82,7 +83,7 @@ func (s *impl) GetLevelForXP(xp int) int {
 }
 
 // GetNextThreshold returns XP needed for next level, or 0 if max level.
-func (s *impl) GetNextThreshold(level int) int {
+func (s *impl) GetNextThreshold(ctx context.Context, level int) int {
 	if level < len(s.config.Thresholds) {
 		return s.config.Thresholds[level]
 	}
@@ -90,7 +91,7 @@ func (s *impl) GetNextThreshold(level int) int {
 }
 
 // GetAllUsers returns all user IDs with their XP (for persistence).
-func (s *impl) GetAllUsers() map[string]int {
+func (s *impl) GetAllUsers(ctx context.Context) map[string]int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -103,7 +104,7 @@ func (s *impl) GetAllUsers() map[string]int {
 }
 
 // UserCount returns the number of users tracked.
-func (s *impl) UserCount() int {
+func (s *impl) UserCount(ctx context.Context) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.xp)

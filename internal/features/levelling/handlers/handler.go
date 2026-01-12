@@ -32,7 +32,7 @@ func (h *Handler) OnMessage(ctx context.Context, msg *discord.MessageContext) er
 	}
 
 	// Award XP and get level change
-	oldLevel, newLevel := h.svc.AwardXP(userID)
+	oldLevel, newLevel := h.svc.AwardXP(ctx, userID)
 
 	// Check for level-up
 	if newLevel > oldLevel && h.announceUp {
@@ -54,9 +54,9 @@ func (h *Handler) CheckLevel(ctx context.Context, cmd *discord.CommandContext) e
 		targetUserID = cmd.UserID()
 	}
 
-	xp := h.svc.GetXP(targetUserID)
-	level := h.svc.GetLevelForXP(xp)
-	nextThreshold := h.svc.GetNextThreshold(level)
+	xp := h.svc.GetXP(ctx, targetUserID)
+	level := h.svc.GetLevelForXP(ctx, xp)
+	nextThreshold := h.svc.GetNextThreshold(ctx, level)
 
 	var message string
 	if nextThreshold > 0 {

@@ -26,7 +26,7 @@ func New(svc service.Service, log logger.Logger) *Persist {
 func (p *Persist) Save(ctx context.Context) error {
 	p.logger.Info(ctx, "levelling feature shutting down", logger.Fields{
 		"component": "levelling",
-		"users":     p.svc.UserCount(),
+		"users":     p.svc.UserCount(ctx),
 	})
 	// TODO: Persist to database
 	return nil
