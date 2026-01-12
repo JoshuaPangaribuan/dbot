@@ -8,9 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/JoshuaPangaribuan/dbot/internal/features/echo"
-	"github.com/JoshuaPangaribuan/dbot/internal/features/pingpong"
-	"github.com/JoshuaPangaribuan/dbot/internal/features/thumbsup"
+	"github.com/JoshuaPangaribuan/dbot/internal/features/levelling"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/config"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord"
 	discordmw "github.com/JoshuaPangaribuan/dbot/internal/pkg/discord/middleware"
@@ -141,39 +139,16 @@ func (a *application) setupGlobalMiddleware(bot *discord.Bot) {
 }
 
 func (a *application) registerFeatures(bot *discord.Bot) {
-	features := []struct {
-		name string
-		f    discord.Feature
-	}{
-		{
-			name: "pingpong",
-			f: pingpong.NewFeature(pingpong.Deps{
-				Logger: a.logger,
-			}),
+	// Register levelling feature using the new simplified pattern
+	levelling.Register(levelling.Deps{
+		Bot:    bot,
+		Logger: a.logger,
+		Config: levelling.Config{
+			XPPerMessage: 10,
+			Thresholds:   []int{100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500},
+			AnnounceUp:   true,
 		},
-		{
-			name: "echo",
-			f: echo.NewFeature(echo.Deps{
-				Logger: a.logger,
-			}),
-		},
-		{
-			name: "thumbsup",
-			f: thumbsup.NewFeature(thumbsup.Deps{
-				Logger: a.logger,
-			}),
-		},
-	}
-
-	for _, feature := range features {
-		if err := bot.RegisterFeature(feature.f); err != nil {
-			a.logger.Error(context.Background(), "Failed to register feature", logger.Fields{
-				"feature": feature.name,
-				"error":   err,
-			})
-			panic(err)
-		}
-	}
+	})
 }
 
 func onlyEventTypes(mw discord.MiddlewareFunc, types ...discord.EventType) discord.MiddlewareFunc {

@@ -46,6 +46,9 @@ type Bot struct {
 	commands       map[string]*Command
 	registeredCmds []*discordgo.ApplicationCommand
 
+	// Shutdown hooks for cleanup
+	shutdownHooks []func(context.Context) error
+
 	baseCtx context.Context
 	guildID string // empty for global commands
 
@@ -198,6 +201,90 @@ func (b *Bot) GuildID() string {
 	return b.guildID
 }
 
+// SlashCommand registers a slash command with its handler.
+// This is the simplest way to add a command - no Feature interface needed.
+func (b *Bot) SlashCommand(name, description string, handler CommandHandler, opts ...CommandOption) {
+	// Build command options
+	var cmdOpts []*discordgo.ApplicationCommandOption
+	for _, opt := range opts {
+		o := &discordgo.ApplicationCommandOption{}
+		opt(o)
+		cmdOpts = append(cmdOpts, o)
+	}
+
+	// Register command
+	cmd := NewSlashCommand(name, description)
+	if len(cmdOpts) > 0 {
+		cmd.Options = cmdOpts
+	}
+
+	b.mu.Lock()
+	b.commands[name] = cmd
+	b.mu.Unlock()
+
+	// Subscribe to command events
+	b.eventBus.Subscribe(&Subscription{
+		Type: EventTypeCommand,
+		Handler: CommandFilter(name, func(ctx context.Context, e *Event) error {
+			ic, ok := e.Data().(*discordgo.InteractionCreate)
+			if !ok {
+				return nil
+			}
+			cmdCtx := NewCommandContext(NewContext(e, b.store), ic, cmd)
+			return handler(ctx, cmdCtx)
+		}),
+	})
+
+	b.logger.Info(context.Background(), "registered slash command", logger.Fields{
+		"component": "discord",
+		"command":   name,
+	})
+}
+
+// OnMessage registers a message handler.
+// This is the simplest way to handle messages - no Feature interface needed.
+func (b *Bot) OnMessage(handler MessageHandler, mw ...MiddlewareFunc) {
+	b.eventBus.Subscribe(&Subscription{
+		Type: EventTypeMessage,
+		Handler: func(ctx context.Context, e *Event) error {
+			m, ok := e.Data().(*discordgo.MessageCreate)
+			if !ok {
+				return nil
+			}
+			msgCtx := NewMessageContext(NewContext(e, b.store), m)
+			return handler(ctx, msgCtx)
+		},
+		Middleware: mw,
+	})
+
+	b.logger.Info(context.Background(), "registered message handler", logger.Fields{
+		"component": "discord",
+	})
+}
+
+// OnReaction registers a reaction add handler.
+func (b *Bot) OnReaction(handler ReactionHandler, mw ...MiddlewareFunc) {
+	b.eventBus.Subscribe(&Subscription{
+		Type: EventTypeReactionAdd,
+		Handler: func(ctx context.Context, e *Event) error {
+			r, ok := e.Data().(*discordgo.MessageReactionAdd)
+			if !ok {
+				return nil
+			}
+			rCtx := NewReactionAddContext(NewContext(e, b.store), r)
+			return handler(ctx, rCtx)
+		},
+		Middleware: mw,
+	})
+}
+
+// OnShutdown registers a cleanup function to run when the bot closes.
+func (b *Bot) OnShutdown(fn func(context.Context) error) {
+	b.mu.Lock()
+	b.shutdownHooks = append(b.shutdownHooks, fn)
+	b.mu.Unlock()
+}
+
 // RegisterFeature adds a feature to the bot and initializes it.
 // Features should be registered before calling Open().
 // If the feature implements CommandProvider, its commands will be registered
@@ -301,17 +388,30 @@ func (b *Bot) Close() error {
 		return nil // Already closed or never opened
 	}
 
-	// Copy features list under lock to iterate safely
+	// Copy features and hooks under lock to iterate safely
 	b.mu.RLock()
 	features := make([]Feature, len(b.features))
 	copy(features, b.features)
+	hooks := make([]func(context.Context) error, len(b.shutdownHooks))
+	copy(hooks, b.shutdownHooks)
 	registeredCmds := make([]*discordgo.ApplicationCommand, len(b.registeredCmds))
 	copy(registeredCmds, b.registeredCmds)
 	guildID := b.guildID
 	b.mu.RUnlock()
 
-	// Shutdown features in reverse order WITHOUT holding the lock
 	ctx := context.Background()
+
+	// Run shutdown hooks in reverse order
+	for i := len(hooks) - 1; i >= 0; i-- {
+		if err := hooks[i](ctx); err != nil {
+			b.logger.Error(ctx, "shutdown hook error", logger.Fields{
+				"component": "discord",
+				"error":     err.Error(),
+			})
+		}
+	}
+
+	// Shutdown features in reverse order WITHOUT holding the lock
 	for i := len(features) - 1; i >= 0; i-- {
 		f := features[i]
 		if err := f.Shutdown(ctx); err != nil {

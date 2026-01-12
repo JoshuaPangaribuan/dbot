@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__morphllm-fast-apply__directory_tree",
+      "mcp__serena__list_dir",
+      "mcp__serena__activate_project",
+      "mcp__morphllm-fast-apply__list_directory_with_sizes",
+      "Bash(wc:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(find:*)",
+      "Bash(git reset:*)",
+      "Bash(git clean:*)",
+      "mcp__morphllm-fast-apply__list_directory"
+    ]
+  }
+}
