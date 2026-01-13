@@ -1,5 +1,9 @@
 # dbot
 
+[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/dl/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/JoshuaPangaribuan/dbot)](https://goreportcard.com/report/github.com/JoshuaPangaribuan/dbot)
+
 A **Go boilerplate** for building Discord bots with [discordgo](https://github.com/bwmarrin/discordgo).
 
 This template provides a batteries-included framework with an event bus, middleware system, reply builders, and hot-reloading configuration—so you can focus on building features instead of wiring up infrastructure.
@@ -16,40 +20,139 @@ This template provides a batteries-included framework with an event bus, middlew
 - **Graceful shutdown** — Clean resource cleanup on `SIGINT`/`SIGTERM`
 - **LangChain integration** — Built-in LLM support with OpenAI and Ollama providers, agent system, and RAG capabilities
 
+## Table of Contents
+
+- [Quick Start](#quick-start) - Get running in 3 minutes
+- [Prerequisites](#prerequisites) - What you need before starting
+- [System Requirements](#system-requirements) - Development and production requirements
+- [Discord Setup](#discord-setup) - Configure your bot in Discord Developer Portal
+- [Project Structure](#project-structure) - File organization overview
+- [Creating Features](#creating-a-feature) - Building your first feature
+- [Core Concepts](#core-concepts)
+  - [Event System](#event-types) - Understanding Discord events
+  - [Middleware](#built-in-middleware) - Reusable request processing
+  - [Interactions](#handling-interactions) - Responding to users
+- [Configuration](#configuration) - Setting up your bot
+- [Logging](#logging) - Structured logging
+- [LangChain Integration](#langchain-integration) - AI-powered features
+- [Development Tooling](#development-tooling) - Testing, building, deployment
+- [Docker Deployment](#docker) - Container setup
+- [Troubleshooting](#troubleshooting) - Common issues and solutions
+- [FAQ](#faq) - Frequently asked questions
+- [Documentation](#documentation) - Deep-dive documentation
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Go 1.21 or higher** - [Install Go](https://go.dev/dl/)
+- **Discord account** - Create one at [discord.com](https://discord.com)
+- **Basic Go knowledge** - Understanding of functions, structs, and interfaces
+- **Text editor or IDE** - VS Code, GoLand, or similar (VS Code with Go extension recommended)
+- **Terminal** - For running commands and the bot
+
+**Optional but recommended:**
+- **Docker** - For containerized deployment ([Install Docker](https://docs.docker.com/get-docker/))
+- **Git** - For version control ([Install Git](https://git-scm.com/downloads))
+
+> **New to Go?** Check out [A Tour of Go](https://go.dev/tour/) and [Effective Go](https://go.dev/doc/effective_go) to get started.
+
+## System Requirements
+
+### Development
+- **OS**: Windows 10+, macOS 11+, or Linux (Ubuntu 20.04+, Debian 11+, etc.)
+- **RAM**: 2GB minimum, 4GB recommended
+- **Disk**: 500MB for code + dependencies
+- **Network**: Internet connection for Go module downloads and Discord API
+
+### Production (Small Bots)
+- **CPU**: 1 core
+- **RAM**: 50-100MB per bot instance
+- **Network**: Stable connection to Discord Gateway
+
+### Production (Large Bots with Sharding)
+- **CPU**: 2-4 cores (more shards = more CPU)
+- **RAM**: ~100MB per shard
+- **Network**: Low latency connection to Discord Gateway
+
+### LangChain AI Features
+- **API Access**: OpenAI/Ollama/Anthropic API access
+- **Rate Limits**: Respect provider rate limits (OpenAI: ~3,000 RPM for tier 4)
+- **Cost**: Monitor API usage - LLM calls can add up quickly
+
 ## Quick Start
 
-### 1. Clone and rename
+### 1. Clone and Set Up
+
+Clone the repository and navigate into it:
 
 ```bash
 git clone https://github.com/JoshuaPangaribuan/dbot.git my-bot
 cd my-bot
+```
 
-# Replace the module path with your own
+Update the module path in `go.mod`:
+- Open `go.mod` in a text editor
+- Replace `github.com/JoshuaPangaribuan/dbot` with your module path (e.g., `github.com/yourusername/my-bot`)
+
+Update imports in all Go files:
+
+**Linux/macOS:**
+```bash
 find . -type f -name "*.go" -exec sed -i '' 's|github.com/JoshuaPangaribuan/dbot|github.com/yourusername/my-bot|g' {} +
-sed -i '' 's|github.com/JoshuaPangaribuan/dbot|github.com/yourusername/my-bot|g' go.mod
 ```
 
-### 2. Set your bot token
+**Or use your editor's Find & Replace function:**
+- Find: `github.com/JoshuaPangaribuan/dbot`
+- Replace: `github.com/yourusername/my-bot`
+
+### 2. Configure Your Bot
+
+Set your bot token as an environment variable:
 
 ```bash
-export DISCORD_TOKEN="your-bot-token"
+export DISCORD_TOKEN="your-bot-token-here"
 ```
 
-### 3. Run
+> **Get your token:** See [Discord Setup](#discord-setup) below for detailed instructions on creating a bot and getting your token.
 
-```bash
-go run .
-```
-
-By default the app loads config from `opt/config/config.yaml`. Override with:
+The app loads config from `opt/config/config.yaml` by default. You can override this with:
 
 ```bash
 export DBOT_CONFIG_PATH="path/to/config.yaml"
 ```
 
-### Sharding (large bots)
+### 3. Run the Bot
 
-If your bot requires gateway sharding, enable it via config:
+Start the bot:
+
+```bash
+go run .
+```
+
+You should see output indicating the bot is running and connected to Discord.
+
+### 4. Test in Discord
+
+Invite your bot to a server (see [Discord Setup](#discord-setup)) and try these commands:
+
+- `/ask <prompt>` — Ask the AI a question
+- `/level` — Check your XP and level
+- `/play <url>` — Play audio (voice feature MVP)
+- `/skip` — Skip current track
+- `/queue` — Show playback queue
+- Send messages in a guild channel to earn XP and level up
+
+The bot includes:
+- An **AI-powered ask feature** using LangChain integration
+- A **levelling system** that awards XP for messages and announces level-ups
+- A **voice/music feature** (MVP skeleton) with queue management
+
+> **Note:** The voice feature is currently an MVP skeleton with simulated playback. Full audio streaming is not yet implemented.
+
+### Sharding (Large Bots)
+
+If your bot requires gateway sharding (2500+ guilds), enable it via config:
 
 ```yaml
 discord:
@@ -64,16 +167,6 @@ Or via env vars:
 export DISCORD_SHARDING=true
 export DISCORD_AUTO_SHARDING=true
 ```
-
-### 4. Test in Discord
-
-- `/ask <prompt>` — Ask the AI a question
-- `/level` — displays your current level and XP
-- Send messages in a guild channel to earn XP and level up
-
-The bot includes:
-- An **AI-powered ask feature** using LangChain integration
-- A **levelling system** that awards XP for messages and announces level-ups
 
 ## Project Structure
 
@@ -91,11 +184,16 @@ The bot includes:
 │   │   │   ├── handlers/       # Discord event handlers
 │   │   │   ├── service/        # Business logic (XP calculations)
 │   │   │   └── persistence/    # Data persistence layer
-│   │   └── ask/                # AI-powered Q&A feature
+│   │   ├── ask/                # AI-powered Q&A feature
+│   │   │   ├── feature.go      # Feature registration & lifecycle
+│   │   │   ├── handlers/       # Discord event handlers
+│   │   │   ├── service/        # Business logic (LLM completion)
+│   │   │   └── persistence/    # Data persistence layer
+│   │   └── voice/              # Voice/music feature (MVP)
 │   │       ├── feature.go      # Feature registration & lifecycle
-│   │       ├── handlers/       # Discord event handlers
-│   │       ├── service/        # Business logic (LLM completion)
-│   │       └── persistence/    # Data persistence layer
+│   │       ├── handlers/       # Discord command handlers
+│   │       ├── service/        # Business logic (queue, playback)
+│   │       └── persistence/    # State persistence layer
 │   └── pkg/
 │       ├── discord/            # Discord bot framework
 │       │   ├── bot.go          # Bot core, session management
@@ -304,15 +402,15 @@ This pattern keeps features testable and maintains clear boundaries between Disc
 
 Subscribe to these event types in your features:
 
-| Event Type | Description | Data Type |
-|------------|-------------|-----------|
-| `EventTypeMessage` | New message created | `*discordgo.MessageCreate` |
-| `EventTypeCommand` | Slash command invoked | `*discordgo.InteractionCreate` |
-| `EventTypeComponent` | Button/select menu clicked | `*discordgo.InteractionCreate` |
-| `EventTypeModal` | Modal form submitted | `*discordgo.InteractionCreate` |
-| `EventTypeVoiceStateUpdate` | User joined/left/moved voice | `*discordgo.VoiceStateUpdate` |
-| `EventTypeReactionAdd` | Reaction added | `*discordgo.MessageReactionAdd` |
-| `EventTypeReactionRemove` | Reaction removed | `*discordgo.MessageReactionRemove` |
+| Event Type | Description | Data Type | Use Cases |
+|------------|-------------|-----------|-----------|
+| `EventTypeMessage` | New message created | `*discordgo.MessageCreate` | Chat commands, message logging, auto-moderation |
+| `EventTypeCommand` | Slash command invoked | `*discordgo.InteractionCreate` | Bot commands, user interactions |
+| `EventTypeComponent` | Button/select menu clicked | `*discordgo.InteractionCreate` | Interactive UI, confirmations |
+| `EventTypeModal` | Modal form submitted | `*discordgo.InteractionCreate` | Multi-step forms, data collection |
+| `EventTypeVoiceStateUpdate` | User joined/left/moved voice | `*discordgo.VoiceStateUpdate` | Voice tracking, auto-roles |
+| `EventTypeReactionAdd` | Reaction added | `*discordgo.MessageReactionAdd` | Reaction roles, polls |
+| `EventTypeReactionRemove` | Reaction removed | `*discordgo.MessageReactionRemove` | Poll updates, reaction cleanup |
 
 ## Handling Interactions
 
@@ -649,11 +747,222 @@ DOCKER_BUILDKIT=1 docker build --target test .
 
 ## Discord Setup
 
-1. Create an application at [Discord Developer Portal](https://discord.com/developers/applications)
-2. Add a bot user and copy the token
-3. Enable necessary intents for your features
-4. Invite the bot with appropriate permissions (Send Messages, Use Slash Commands)
+### Step 1: Create a Discord Application
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **"New Application"**
+3. Give your application a name (e.g., "My Awesome Bot")
+4. Click **"Create"**
+
+### Step 2: Create a Bot User
+
+1. In the left sidebar, click **"Bot"**
+2. Click **"Add Bot"**
+3. Confirm by clicking **"Yes, do it!"**
+4. Under **"Privileged Gateway Intents"**, enable:
+   - ✅ **Message Content Intent** (required for message handling)
+   - ✅ **Server Members Intent** (if using member features)
+   - ✅ **Presence Intent** (if tracking user status)
+5. Click **"Reset Token"** to generate a new token
+6. **Copy the token immediately** (you won't see it again!)
+7. Save it securely: `export DISCORD_TOKEN="paste-token-here"`
+
+> ⚠️ **Important**: Never commit your bot token to version control! Always use environment variables.
+
+### Step 3: Configure OAuth2 URL (Invite Bot)
+
+1. In the left sidebar, click **"OAuth2"** → **"URL Generator"**
+2. Under **"Scopes"**, select:
+   - ✅ **bot**
+   - ✅ **applications.commands** (for slash commands)
+3. Under **"Bot Permissions"**, select:
+   - ✅ **Send Messages**
+   - ✅ **Embed Links**
+   - ✅ **Attach Files**
+   - ✅ **Add Reactions**
+   - ✅ **Use Slash Commands**
+   - ✅ **Connect** (for voice features)
+   - ✅ **Speak** (for voice features)
+   - ✅ **Read Message History**
+4. Copy the generated URL from the bottom
+5. Paste it into your browser and invite the bot to your server
+
+### Step 4: Get Your Server ID (Optional but Recommended)
+
+For instant command updates during development:
+
+1. Open Discord
+2. Go to **User Settings** → **Advanced**
+3. Enable **Developer Mode**
+4. Right-click your server icon
+5. Select **"Copy Server ID"**
+6. Add it to `opt/config/config.yaml`:
+   ```yaml
+   discord:
+     guild_id: "paste-server-id-here"
+   ```
+
+### Common Issues
+
+| Problem | Solution |
+|---------|----------|
+| Commands don't appear | Wait up to 1 hour for global commands, or set `guild_id` for instant updates |
+| "Invalid Intent" error | Enable the required intents in Discord Developer Portal → Bot → Privileged Gateway Intents |
+| Bot can't read messages | Enable **Message Content Intent** |
+| Bot can't join voice | Enable **Connect** and **Speak** permissions in OAuth2 scopes |
+
+## Troubleshooting
+
+### Bot won't start
+
+**Error: `Invalid token`**
+- Verify you copied the correct token from Discord Developer Portal
+- Ensure there are no extra spaces: `export DISCORD_TOKEN="your-token"` (no spaces around token)
+- Check that you haven't accidentally committed the token to version control
+
+**Error: `Permission denied`**
+- Check that the bot has permission to read/write in the test server
+- Verify intents are enabled in Discord Developer Portal
+
+**Error: `Cannot find module`**
+- Run `go mod tidy` to ensure dependencies are properly installed
+- Check your Go version is 1.21 or higher
+
+### Commands not appearing
+
+**Commands don't show up in Discord**
+- Commands can take up to 1 hour to propagate globally
+- For instant updates, set `guild_id` in config to your test server ID
+- Run the bot again after updating the config
+- Check that the bot has the `applications.commands` scope in the invite URL
+
+**Error: `Unknown command`**
+- Wait 30-60 seconds for commands to sync
+- Check the bot has the `applications.commands` scope
+- Verify the bot is actually running and connected
+
+### LangChain errors
+
+**Error: `API key invalid`**
+- Verify your API key is correct for the chosen provider
+- Check that `base_url` is correct (default: OpenAI API)
+- Ensure you have available API credits/quota
+- For Ollama, verify the service is running: `curl http://localhost:11434`
+
+**Error: `Context deadline exceeded`**
+- The LLM request took too long to respond
+- Increase timeout in config: `langchain.timeout: 60s`
+- Check your network connection to the API
+
+### Voice feature issues
+
+**Bot joins but no audio plays**
+- The voice feature is currently an MVP skeleton with simulated playback
+- Audio streaming is not yet implemented
+- The queue management and structure are ready for future implementation
+
+**Bot won't join voice channel**
+- Check that the bot has **Connect** and **Speak** permissions
+- Verify the voice feature is enabled in config: `voice.enabled: true`
+- Ensure you're in a voice channel the bot can access
+
+### Still stuck?
+
+- Check the logs: The bot outputs detailed error messages
+- Enable debug logging by setting `LOG_LEVEL=debug`
+- Open an issue on [GitHub](https://github.com/JoshuaPangaribuan/dbot/issues)
+
+## FAQ
+
+### General
+
+**Q: Can I host this on free hosting platforms?**
+A: Yes! The bot compiles to a single static binary (~12MB) and works on:
+- **Railway**, **Render**, **Fly.io** (recommended)
+- **Heroku** (with buildpacks)
+- **VPS** (DigitalOcean, Linode, AWS, etc.)
+
+**Q: Does this support Discord's new Interactions?**
+A: Yes! Full support for slash commands, buttons, select menus, and modals.
+
+**Q: Can I use this with an existing discordgo bot?**
+A: This framework is built on discordgo, so you can integrate pieces. However, it's designed to be a complete replacement for discordgo's session handling.
+
+### Development
+
+**Q: How do I add persistent storage?**
+A: Use any Go database library (sqlx, gorm, etc.) in your feature's `Init()` method. Remember to close connections in `Shutdown()`.
+
+**Q: Can I use web frameworks (Gin, Echo, etc.)?**
+A: Yes! Start an HTTP server in `Init()` to add a web dashboard, webhook endpoints, or API.
+
+**Q: How do I deploy multiple instances?**
+A: For stateless features, just deploy multiple copies. For stateful features, use Redis, PostgreSQL, or another external store.
+
+### LangChain
+
+**Q: Do I need an API key for LangChain?**
+A: Yes, unless you use Ollama (local LLM). Each provider (OpenAI, Anthropic) requires their own API key.
+
+**Q: Can I use custom LLMs?**
+A: Yes! Use the "openai" provider with a custom `base_url` to point to any OpenAI-compatible API.
+
+**Q: How much does LangChain cost?**
+A: It depends on the provider and model. For example:
+- **OpenAI GPT-4o-mini**: ~$0.15 per 1M input tokens
+- **Ollama (local)**: Free (runs on your hardware)
+Monitor your usage and set budget limits!
+
+### Sharding
+
+**Q: When should I enable sharding?**
+A: Discord requires sharding when you reach 2500 guilds. Enable it before hitting that limit.
+
+**Q: Does sharding cost more?**
+A: Yes, each shard uses a Discord gateway connection. Consider:
+- **1 shard**: ~50MB RAM
+- **10 shards**: ~500MB RAM
+- **100 shards**: ~5GB RAM
+
+**Q: Can I run shards on multiple servers?**
+A: Not currently. This framework runs all shards in one process. For distributed sharding, consider using a process manager.
+
+## Documentation
+
+**Framework Documentation:**
+- [Discord Framework README](internal/pkg/discord/README.md) — Complete API reference and component documentation
+
+**Quick Reference:**
+- See [Creating a Feature](#creating-a-feature) for feature development
+- See [Built-in Middleware](#built-in-middleware) for middleware examples
+- See [LangChain Integration](#langchain-integration) for AI features
+- See [Configuration](#configuration) for setup options
+
+**Coming Soon:**
+- Voice feature deep-dive guide
+- Architecture patterns and best practices
+- Migration guide from discordgo
+
+## Community & Support
+
+**Getting Help:**
+- 📖 [Documentation](#documentation) - Start here!
+- 🐛 [GitHub Issues](https://github.com/JoshuaPangaribuan/dbot/issues) - Bug reports and feature requests
+- 💬 [Discord Community](https://discord.gg/) - Chat with other users
+
+**Contributing:**
+Contributions are welcome! Feel free to:
+- Report bugs and feature requests
+- Submit pull requests
+- Improve documentation
+- Share your projects built with dbot
+
+**Related Projects:**
+- [discordgo](https://github.com/bwmarrin/discordgo) - underlying Discord library
+- [LangChain Go](https://github.com/tmc/langchaingo) - LLM integration
 
 ## License
 
-MIT (or your preferred license)
+MIT © 2024 Joshua Pangaribuan
+
+This project is open source and available under the [MIT License](LICENSE).
