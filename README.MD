@@ -67,10 +67,13 @@ export DISCORD_AUTO_SHARDING=true
 
 ### 4. Test in Discord
 
+- `/ask <prompt>` — Ask the AI a question
 - `/level` — displays your current level and XP
 - Send messages in a guild channel to earn XP and level up
 
-The bot includes a levelling system that awards XP for messages and announces level-ups.
+The bot includes:
+- An **AI-powered ask feature** using LangChain integration
+- A **levelling system** that awards XP for messages and announces level-ups
 
 ## Project Structure
 
@@ -83,10 +86,15 @@ The bot includes a levelling system that awards XP for messages and announces le
 │   │   ├── config.go           # Config loader setup
 │   │   └── log.go              # Logger setup
 │   ├── features/               # Feature implementations
-│   │   └── levelling/          # Example feature (XP/leveling system)
+│   │   ├── levelling/          # XP/leveling system
+│   │   │   ├── feature.go      # Feature registration & lifecycle
+│   │   │   ├── handlers/       # Discord event handlers
+│   │   │   ├── service/        # Business logic (XP calculations)
+│   │   │   └── persistence/    # Data persistence layer
+│   │   └── ask/                # AI-powered Q&A feature
 │   │       ├── feature.go      # Feature registration & lifecycle
 │   │       ├── handlers/       # Discord event handlers
-│   │       ├── service/        # Business logic (XP calculations)
+│   │       ├── service/        # Business logic (LLM completion)
 │   │       └── persistence/    # Data persistence layer
 │   └── pkg/
 │       ├── discord/            # Discord bot framework
@@ -271,6 +279,26 @@ func (f *Feature) Commands() []*discord.Command {
 ```
 
 Commands are automatically synced with Discord when the bot opens.
+
+### Feature Structure Pattern
+
+Features follow a consistent three-layer architecture:
+
+```
+myfeature/
+├── feature.go      # Registration, lifecycle, dependencies
+├── handlers/       # Discord event handlers (thin layer)
+├── service/        # Business logic (domain logic)
+└── persistence/    # Data persistence layer (storage)
+```
+
+**Separation of concerns:**
+- **feature.go**: Wires dependencies, implements `Register()`, handles lifecycle
+- **handlers/**: Converts Discord events to service calls, handles reply formatting
+- **service/**: Contains domain logic, independent of Discord
+- **persistence/**: Handles data storage, independent of both Discord and service logic
+
+This pattern keeps features testable and maintains clear boundaries between Discord handling, business logic, and data storage.
 
 ## Event Types
 
@@ -490,6 +518,15 @@ svc, err := langchain.New(
 )
 ```
 
+**Anthropic:**
+```go
+svc, err := langchain.New(
+    langchain.WithProvider(langchain.ProviderAnthropic),
+    langchain.WithAnthropicConfig("sk-ant-...", "https://api.anthropic.com"),
+    langchain.WithModel("claude-3-haiku-20240307"),
+)
+```
+
 ### Text Completion
 
 ```go
@@ -506,6 +543,16 @@ messages := []langchain.Message{
     {Role: "user", Content: "How are you?"},
 }
 result, err := svc.Chat(ctx, messages)
+```
+
+### Streaming Completion
+
+```go
+// Stream tokens as they arrive
+ch, err := svc.Stream(ctx, "Tell me a story")
+for token := range ch {
+    fmt.Print(token) // Handle each token as it arrives
+}
 ```
 
 ### Agent with Tools
@@ -556,6 +603,7 @@ langchain.WithTemperature(0.5)            // Response randomness (0-1)
 langchain.WithMaxTokens(1000)             // Max response length
 langchain.WithTimeout(30 * time.Second)   // Request timeout
 langchain.WithLogger(logger)              // Custom logger
+langchain.WithSystemPrompt("You are...")  // System prompt for chat
 ```
 
 ## Development Tooling
