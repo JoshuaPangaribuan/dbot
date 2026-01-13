@@ -11,6 +11,7 @@ import (
 
 	"github.com/JoshuaPangaribuan/dbot/internal/features/ask"
 	"github.com/JoshuaPangaribuan/dbot/internal/features/levelling"
+	"github.com/JoshuaPangaribuan/dbot/internal/features/voice"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/config"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord"
 	discordmw "github.com/JoshuaPangaribuan/dbot/internal/pkg/discord/middleware"
@@ -305,6 +306,32 @@ func (a *application) registerFeatures(bot *discord.Bot) {
 		a.logger.Error(context.Background(), "Failed to register ask feature", logger.Fields{"error": err})
 		// Don't panic - the bot can run without the ask feature
 	}
+
+	// Register voice feature
+	voiceEnabled := a.config.GetString("voice.enabled") == "true"
+	voiceDefaultVolume := a.config.GetInt("voice.default_volume")
+	if voiceDefaultVolume == 0 {
+		voiceDefaultVolume = 50
+	}
+	voiceMaxQueueSize := a.config.GetInt("voice.max_queue_size")
+	if voiceMaxQueueSize == 0 {
+		voiceMaxQueueSize = 20
+	}
+	voiceYouTubeEnabled := a.config.GetString("voice.youtube_enabled") == "true"
+	voiceLocalFilesEnabled := a.config.GetString("voice.local_files_enabled") == "true"
+
+	voice.Register(voice.Deps{
+		Bot:    bot,
+		Logger: a.logger,
+		Config: voice.Config{
+			Enabled:           voiceEnabled,
+			DefaultVolume:     voiceDefaultVolume,
+			MaxQueueSize:      voiceMaxQueueSize,
+			YouTubeEnabled:    voiceYouTubeEnabled,
+			LocalFilesEnabled: voiceLocalFilesEnabled,
+			AllowedChannels:   nil, // TODO: parse from config as array
+		},
+	})
 }
 
 func onlyEventTypes(mw discord.MiddlewareFunc, types ...discord.EventType) discord.MiddlewareFunc {

@@ -1,11 +1,11 @@
 discord:
   # Prefer providing the token via DISCORD_TOKEN env var.
-  token: "YOUR_DISCORD_TOKEN"
+  token: "YOUR_DISCORD_BOT_TOKEN"
 
   # Guild ID for guild-specific commands (instant updates, recommended for development).
   # Leave empty for global commands (can take up to 1 hour to propagate).
   # Right-click your server icon → "Copy Server ID" to get this value.
-  guild_id: "YOUR_GUILD_ID"
+  guild_id: "1256335050195079250"
 
   # Gateway sharding (single binary, many shards). Enable when your bot grows large.
   sharding:
@@ -40,3 +40,12 @@ langchain:
 
   # System prompt - defines the AI's persona and behavior
   system_prompt: "You are a helpful AI assistant. Always respond in English, regardless of the language the user writes in."
+
+# Voice/Music feature configuration
+voice:
+  enabled: true
+  default_volume: 50
+  max_queue_size: 20
+  youtube_enabled: true
+  local_files_enabled: true
+  allowed_channels: []  # Whitelist voice channel IDs (empty = all channels)
