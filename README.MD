@@ -14,6 +14,7 @@ This template provides a batteries-included framework with an event bus, middlew
 - **Hot-reload config** — Viper-backed configuration with file watching
 - **Structured logging** — Pluggable logger with slog/zap providers
 - **Graceful shutdown** — Clean resource cleanup on `SIGINT`/`SIGTERM`
+- **LangChain integration** — Built-in LLM support with OpenAI and Ollama providers, agent system, and RAG capabilities
 
 ## Quick Start
 
@@ -97,6 +98,12 @@ The bot includes a levelling system that awards XP for messages and announces le
 │       │   ├── state.go        # State management
 │       │   ├── middleware/     # Built-in middleware
 │       │   └── reply/          # Reply & embed builders
+│       ├── langchain/          # LLM integration
+│       │   ├── service.go      # Core LLM service (OpenAI, Ollama)
+│       │   ├── agent.go        # Agent with tool support
+│       │   ├── rag.go          # Retrieval-augmented generation
+│       │   ├── memory.go       # Conversation memory
+│       │   └── providers.go    # LLM provider implementations
 │       ├── config/             # Configuration abstraction
 │       └── logger/             # Logging abstraction
 ├── internal/mocks/             # Auto-generated mocks
@@ -457,6 +464,99 @@ logger, err := logger.New(logger.ProviderZap())
 - User and channel information logging
 - Command and interaction details
 - Duration tracking for performance monitoring
+
+## LangChain Integration
+
+The framework includes a comprehensive LangChain integration for building AI-powered Discord bots:
+
+### Supported LLM Providers
+
+**OpenAI:**
+```go
+svc, err := langchain.New(
+    langchain.WithProvider(langchain.ProviderOpenAI),
+    langchain.WithOpenAIConfig("sk-...", "https://api.openai.com/v1"),
+    langchain.WithModel("gpt-4"),
+    langchain.WithTemperature(0.7),
+)
+```
+
+**Ollama (local):**
+```go
+svc, err := langchain.New(
+    langchain.WithProvider(langchain.ProviderOllama),
+    langchain.WithOllamaConfig("http://localhost:11434"),
+    langchain.WithModel("llama2"),
+)
+```
+
+### Text Completion
+
+```go
+result, err := svc.Complete(ctx, "What is the capital of France?")
+```
+
+### Chat with History
+
+```go
+messages := []langchain.Message{
+    {Role: "system", Content: "You are a helpful assistant"},
+    {Role: "user", Content: "Hello!"},
+    {Role: "assistant", Content: "Hi there!"},
+    {Role: "user", Content: "How are you?"},
+}
+result, err := svc.Chat(ctx, messages)
+```
+
+### Agent with Tools
+
+Create agents that can use tools:
+
+```go
+// Define a tool
+weatherTool := langchain.NewSimpleTool("weather", "Get weather information",
+    func(ctx context.Context, location string) (string, error) {
+        return fmt.Sprintf("Weather in %s: Sunny, 72°F", location), nil
+    },
+)
+
+// Create agent with tools
+agent := langchain.NewAgent(svc, weatherTool)
+
+// Run agent (will decide which tool to use)
+response, err := agent.Run(ctx, "What's the weather in Paris?")
+```
+
+### RAG (Retrieval-Augmented Generation)
+
+Add knowledge retrieval to your bot:
+
+```go
+// Create a vector store
+store := langchain.NewSimpleVectorStore()
+
+// Create RAG service
+ragSvc := langchain.NewRAGService(svc, store)
+
+// Add documents
+err := ragSvc.AddDocuments(ctx, []string{
+    "Paris is the capital of France.",
+    "London is the capital of the UK.",
+}, nil)
+
+// Query with RAG
+answer, err := ragSvc.Query(ctx, "What is the capital of France?", 2)
+```
+
+### Configuration Options
+
+```go
+langchain.WithModel("gpt-4")              // Model name
+langchain.WithTemperature(0.5)            // Response randomness (0-1)
+langchain.WithMaxTokens(1000)             // Max response length
+langchain.WithTimeout(30 * time.Second)   // Request timeout
+langchain.WithLogger(logger)              // Custom logger
+```
 
 ## Development Tooling
 
