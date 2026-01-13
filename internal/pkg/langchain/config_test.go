@@ -128,23 +128,23 @@ func TestOptions_WithTemperature_Table(t *testing.T) {
 
 func TestOptions_WithMaxTokens_Table(t *testing.T) {
 	tests := []struct {
-		name  string
+		name   string
 		tokens int
 	}{
 		{
-			name:  "small tokens",
+			name:   "small tokens",
 			tokens: 100,
 		},
 		{
-			name:  "medium tokens",
+			name:   "medium tokens",
 			tokens: 1000,
 		},
 		{
-			name:  "large tokens",
+			name:   "large tokens",
 			tokens: 4000,
 		},
 		{
-			name:  "zero tokens",
+			name:   "zero tokens",
 			tokens: 0,
 		},
 	}

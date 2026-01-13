@@ -9,10 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JoshuaPangaribuan/dbot/internal/features/ask"
 	"github.com/JoshuaPangaribuan/dbot/internal/features/levelling"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/config"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord"
 	discordmw "github.com/JoshuaPangaribuan/dbot/internal/pkg/discord/middleware"
+	"github.com/JoshuaPangaribuan/dbot/internal/pkg/langchain"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/logger"
 )
 
@@ -138,9 +140,19 @@ func (a *application) Start() {
 		}
 	}
 
+	// Guild ID for guild-specific commands (instant sync, recommended for development)
+	guildID := a.config.GetString("discord.guild_id")
+	if v := os.Getenv("DISCORD_GUILD_ID"); v != "" {
+		guildID = v
+	}
+
 	// Setup Bot
 	botOpts := []discord.Option{
 		discord.WithLogger(a.logger),
+	}
+	if guildID != "" {
+		botOpts = append(botOpts, discord.WithGuildID(guildID))
+		a.logger.Info(context.Background(), "Using guild-specific commands", logger.Fields{"guild_id": guildID})
 	}
 	if shardEnabled {
 		botOpts = append(botOpts, discord.WithGatewayBot(useGatewayBot))
@@ -231,6 +243,68 @@ func (a *application) registerFeatures(bot *discord.Bot) {
 			AnnounceUp:   true,
 		},
 	})
+
+	// Register ask feature with LangChain integration
+	// Get langchain config from config file
+	langchainProvider := langchain.Provider(a.config.GetString("langchain.provider"))
+	if langchainProvider == "" {
+		langchainProvider = langchain.ProviderOpenAI
+	}
+
+	// Get config values
+	apiKey := a.config.GetString("langchain.api_key")
+	baseURL := a.config.GetString("langchain.base_url")
+	model := a.config.GetString("langchain.model")
+
+	// Set default models based on provider if not specified
+	switch langchainProvider {
+	case langchain.ProviderAnthropic:
+		if model == "" {
+			model = "claude-3-5-sonnet-20241022"
+		}
+	case langchain.ProviderOllama:
+		if model == "" {
+			model = "llama3.2"
+		}
+	default:
+		if model == "" {
+			model = "gpt-4o-mini"
+		}
+	}
+
+	// Get temperature and max_tokens from config, with defaults
+	temperature := a.config.GetFloat64("langchain.temperature")
+	if temperature == 0 {
+		temperature = 0.7
+	}
+	maxTokens := a.config.GetInt("langchain.max_tokens")
+	if maxTokens == 0 {
+		maxTokens = 1000
+	}
+
+	// Get system prompt from config, with default
+	systemPrompt := a.config.GetString("langchain.system_prompt")
+	if systemPrompt == "" {
+		systemPrompt = "You are a helpful AI assistant. Always respond in English."
+	}
+
+	_, err := ask.Register(ask.Deps{
+		Bot:    bot,
+		Logger: a.logger,
+		Config: ask.Config{
+			Provider:     langchainProvider,
+			Model:        model,
+			APIKey:       apiKey,
+			BaseURL:      baseURL,
+			Temperature:  float32(temperature),
+			MaxTokens:    maxTokens,
+			SystemPrompt: systemPrompt,
+		},
+	})
+	if err != nil {
+		a.logger.Error(context.Background(), "Failed to register ask feature", logger.Fields{"error": err})
+		// Don't panic - the bot can run without the ask feature
+	}
 }
 
 func onlyEventTypes(mw discord.MiddlewareFunc, types ...discord.EventType) discord.MiddlewareFunc {

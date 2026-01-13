@@ -63,11 +63,11 @@ func TestNewAgent_Table(t *testing.T) {
 
 func TestSimpleTool_Table(t *testing.T) {
 	tests := []struct {
-		name        string
-		tool        Tool
-		input       string
-		wantResult  string
-		wantErr     bool
+		name       string
+		tool       Tool
+		input      string
+		wantResult string
+		wantErr    bool
 	}{
 		{
 			name: "simple tool",
@@ -83,9 +83,9 @@ func TestSimpleTool_Table(t *testing.T) {
 			tool: NewSimpleTool("error", "returns error", func(ctx context.Context, input string) (string, error) {
 				return "", errors.New("tool error")
 			}),
-			input:       "test",
-			wantResult:  "",
-			wantErr:     true,
+			input:      "test",
+			wantResult: "",
+			wantErr:    true,
 		},
 		{
 			name: "tool with transformation",
@@ -163,19 +163,19 @@ func TestAgent_BuildSystemPrompt_Table(t *testing.T) {
 
 func TestAgent_Run_Table(t *testing.T) {
 	tests := []struct {
-		name        string
-		tools       []Tool
-		input       string
-		wantErr     bool
-		skip        bool
-		skipReason  string
+		name       string
+		tools      []Tool
+		input      string
+		wantErr    bool
+		skip       bool
+		skipReason string
 	}{
 		{
-			name:  "run without tools",
-			tools: nil,
-			input: "Hello, how are you?",
-			wantErr: false,
-			skip: true,
+			name:       "run without tools",
+			tools:      nil,
+			input:      "Hello, how are you?",
+			wantErr:    false,
+			skip:       true,
 			skipReason: "requires LLM API call",
 		},
 		{
@@ -185,9 +185,9 @@ func TestAgent_Run_Table(t *testing.T) {
 					return "tool result: " + input, nil
 				}),
 			},
-			input: "use the test_tool",
-			wantErr: false,
-			skip: true,
+			input:      "use the test_tool",
+			wantErr:    false,
+			skip:       true,
 			skipReason: "requires LLM API call",
 		},
 		{
@@ -197,9 +197,9 @@ func TestAgent_Run_Table(t *testing.T) {
 					return "sunny", nil
 				}),
 			},
-			input: "tell me a joke",
-			wantErr: false,
-			skip: true,
+			input:      "tell me a joke",
+			wantErr:    false,
+			skip:       true,
 			skipReason: "requires LLM API call",
 		},
 	}
@@ -231,13 +231,13 @@ func TestAgent_Run_Table(t *testing.T) {
 
 func TestAgent_Run_ToolError_Table(t *testing.T) {
 	tests := []struct {
-		name      string
-		toolName  string
-		toolDesc  string
-		toolFn    func(context.Context, string) (string, error)
-		input     string
-		wantErr   bool
-		skip      bool
+		name       string
+		toolName   string
+		toolDesc   string
+		toolFn     func(context.Context, string) (string, error)
+		input      string
+		wantErr    bool
+		skip       bool
 		skipReason string
 	}{
 		{
@@ -247,9 +247,9 @@ func TestAgent_Run_ToolError_Table(t *testing.T) {
 			toolFn: func(ctx context.Context, input string) (string, error) {
 				return "", errors.New("tool execution failed")
 			},
-			input: "use failing_tool",
-			wantErr: true,
-			skip: true,
+			input:      "use failing_tool",
+			wantErr:    true,
+			skip:       true,
 			skipReason: "requires LLM API call",
 		},
 	}
@@ -340,11 +340,11 @@ func TestAgent_ShouldUseTool_Table(t *testing.T) {
 
 func TestSimpleTool_NameAndDescription_Table(t *testing.T) {
 	tests := []struct {
-		name        string
-		toolName    string
-		toolDesc    string
-		wantName    string
-		wantDesc    string
+		name     string
+		toolName string
+		toolDesc string
+		wantName string
+		wantDesc string
 	}{
 		{
 			name:     "basic tool",
@@ -380,9 +380,9 @@ func TestSimpleTool_NameAndDescription_Table(t *testing.T) {
 
 func TestNewSimpleTool_Table(t *testing.T) {
 	tests := []struct {
-		name   string
-		fn     func(context.Context, string) (string, error)
-		check  func(*testing.T, Tool)
+		name  string
+		fn    func(context.Context, string) (string, error)
+		check func(*testing.T, Tool)
 	}{
 		{
 			name: "nil function",

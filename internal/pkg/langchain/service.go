@@ -131,10 +131,10 @@ func (s *service) Chat(ctx context.Context, messages []Message, opts ...ChatOpti
 
 	s.logger.Debug(ctx, "llm chat requested",
 		logger.Fields{
-			"provider":        s.config.provider,
-			"model":           s.config.model,
-			"message_count":   len(messages),
-			"prompt_length":   len(prompt),
+			"provider":      s.config.provider,
+			"model":         s.config.model,
+			"message_count": len(messages),
+			"prompt_length": len(prompt),
 		})
 
 	result, err := s.llm.Call(ctx, prompt,
@@ -152,22 +152,33 @@ func (s *service) Chat(ctx context.Context, messages []Message, opts ...ChatOpti
 
 // Stream generates a streaming text completion
 func (s *service) Stream(ctx context.Context, prompt string, opts ...CompletionOption) (<-chan string, error) {
-	// For now, return a simple implementation
-	// Full streaming implementation would use langchaingo's streaming support
-	ch := make(chan string, 1)
+	// Apply completion options
+	cfg := &completionConfig{
+		temperature: s.config.temperature,
+		maxTokens:   s.config.maxTokens,
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
 
-	go func() {
-		defer close(ch)
-		result, err := s.Complete(ctx, prompt, opts...)
-		if err != nil {
-			s.logger.Error(ctx, "stream completion failed",
-				logger.Fields{"error": err})
-			return
-		}
-		ch <- result
-	}()
+	// Add timeout if not present
+	if _, ok := ctx.Deadline(); !ok && s.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+	}
 
-	return ch, nil
+	s.logger.Debug(ctx, "llm stream requested",
+		logger.Fields{
+			"provider":      s.config.provider,
+			"model":         s.config.model,
+			"prompt_length": len(prompt),
+		})
+
+	return s.llm.Stream(ctx, prompt,
+		llms.WithTemperature(float64(cfg.temperature)),
+		llms.WithMaxTokens(cfg.maxTokens),
+	)
 }
 
 // Close cleans up resources

@@ -130,12 +130,12 @@ func TestRAGService_AddDocuments_Table(t *testing.T) {
 
 func TestRAGService_Query_Table(t *testing.T) {
 	tests := []struct {
-		name      string
-		documents []string
-		query     string
-		k         int
-		wantErr   bool
-		skip      bool
+		name       string
+		documents  []string
+		query      string
+		k          int
+		wantErr    bool
+		skip       bool
 		skipReason string
 	}{
 		{
@@ -144,10 +144,10 @@ func TestRAGService_Query_Table(t *testing.T) {
 				"Paris is the capital of France.",
 				"London is the capital of the UK.",
 			},
-			query:     "What is the capital of France?",
-			k:         2,
-			wantErr:   false,
-			skip:      true,
+			query:      "What is the capital of France?",
+			k:          2,
+			wantErr:    false,
+			skip:       true,
 			skipReason: "requires LLM API call",
 		},
 		{
@@ -155,19 +155,19 @@ func TestRAGService_Query_Table(t *testing.T) {
 			documents: []string{
 				"Random text about something.",
 			},
-			query:     "What is the capital of France?",
-			k:         1,
-			wantErr:   false,
-			skip:      true,
+			query:      "What is the capital of France?",
+			k:          1,
+			wantErr:    false,
+			skip:       true,
 			skipReason: "requires LLM API call",
 		},
 		{
-			name:      "query empty store",
-			documents: []string{},
-			query:     "What is the capital?",
-			k:         1,
-			wantErr:   false,
-			skip:      true,
+			name:       "query empty store",
+			documents:  []string{},
+			query:      "What is the capital?",
+			k:          1,
+			wantErr:    false,
+			skip:       true,
 			skipReason: "requires LLM API call",
 		},
 	}
@@ -204,9 +204,9 @@ func TestRAGService_Query_Table(t *testing.T) {
 
 func TestSimpleVectorStore_AddDocuments_Table(t *testing.T) {
 	tests := []struct {
-		name  string
-		docs  []Document
-		want  int
+		name string
+		docs []Document
+		want int
 	}{
 		{
 			name: "add single document",
@@ -249,12 +249,12 @@ func TestSimpleVectorStore_AddDocuments_Table(t *testing.T) {
 
 func TestSimpleVectorStore_SimilaritySearch_Table(t *testing.T) {
 	tests := []struct {
-		name        string
-		documents   []string
-		query       string
-		k           int
-		wantMin     int
-		wantMax     int
+		name      string
+		documents []string
+		query     string
+		k         int
+		wantMin   int
+		wantMax   int
 	}{
 		{
 			name: "search with matches",
@@ -280,7 +280,7 @@ func TestSimpleVectorStore_SimilaritySearch_Table(t *testing.T) {
 			wantMax: 1,
 		},
 		{
-			name: "search empty store",
+			name:      "search empty store",
 			documents: []string{},
 			query:     "test",
 			k:         1,
@@ -352,7 +352,7 @@ func TestDocument_Table(t *testing.T) {
 				PageContent: "Test",
 				Metadata: map[string]any{
 					"source": "test",
-					"id":      1,
+					"id":     1,
 				},
 			},
 			check: func(t *testing.T, d Document) {

@@ -1,6 +1,11 @@
 discord:
   # Prefer providing the token via DISCORD_TOKEN env var.
-  token: "<YOUR_BOT_TOKEN>"
+  token: "YOUR_DISCORD_TOKEN"
+
+  # Guild ID for guild-specific commands (instant updates, recommended for development).
+  # Leave empty for global commands (can take up to 1 hour to propagate).
+  # Right-click your server icon → "Copy Server ID" to get this value.
+  guild_id: "YOUR_GUILD_ID"
 
   # Gateway sharding (single binary, many shards). Enable when your bot grows large.
   sharding:
@@ -13,3 +18,25 @@ discord:
     use_gateway_bot: true
     # Delay between shard identifies within the same concurrency bucket.
     identify_delay: "5s"
+
+# LangChain AI integration configuration
+langchain:
+  # Provider: "openai", "anthropic", or "ollama"
+  # Note: Use "openai" for OpenAI-compatible API proxies (like z.ai)
+  provider: "openai"
+
+  # Model name
+  model: "gpt-4o-mini"
+
+  # API key for the provider
+  api_key: "YOUR_API_KEY"
+
+  # Custom base URL (for OpenAI-compatible API proxies)
+  base_url: "YOUR_BASE_URL"
+
+  # Generation parameters
+  temperature: 0.5
+  max_tokens: 2000
+
+  # System prompt - defines the AI's persona and behavior
+  system_prompt: "You are a helpful AI assistant. Always respond in English, regardless of the language the user writes in."

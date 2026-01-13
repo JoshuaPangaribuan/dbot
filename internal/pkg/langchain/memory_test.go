@@ -337,22 +337,22 @@ func TestMemory_ToMessages_Table(t *testing.T) {
 
 func TestMemory_ConcurrentAccess_Table(t *testing.T) {
 	tests := []struct {
-		name      string
+		name       string
 		goroutines int
 		operations int
 	}{
 		{
-			name:      "single goroutine",
+			name:       "single goroutine",
 			goroutines: 1,
 			operations: 100,
 		},
 		{
-			name:      "multiple goroutines",
+			name:       "multiple goroutines",
 			goroutines: 10,
 			operations: 100,
 		},
 		{
-			name:      "many goroutines",
+			name:       "many goroutines",
 			goroutines: 50,
 			operations: 50,
 		},

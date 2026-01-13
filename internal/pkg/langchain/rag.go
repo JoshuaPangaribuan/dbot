@@ -51,9 +51,9 @@ func (r *RAGService) Query(ctx context.Context, question string, k int) (string,
 
 	r.logger.Debug(ctx, "rag retrieved documents",
 		logger.Fields{
-			"query":        question,
-			"doc_count":    len(docs),
-			"retrieval_k":  k,
+			"query":       question,
+			"doc_count":   len(docs),
+			"retrieval_k": k,
 		})
 
 	// 2. Build prompt with context

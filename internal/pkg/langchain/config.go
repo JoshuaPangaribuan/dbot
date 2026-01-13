@@ -10,8 +10,8 @@ import (
 type Provider string
 
 const (
-	ProviderOpenAI   Provider = "openai"
-	ProviderOllama   Provider = "ollama"
+	ProviderOpenAI    Provider = "openai"
+	ProviderOllama    Provider = "ollama"
 	ProviderAnthropic Provider = "anthropic" // Future support
 )
 
@@ -23,14 +23,15 @@ type Message struct {
 
 // config holds service configuration
 type config struct {
-	provider    Provider
-	logger      logger.Logger
-	apiKey      string
-	baseURL     string
-	model       string
-	temperature float32
-	maxTokens   int
-	timeout     time.Duration
+	provider     Provider
+	logger       logger.Logger
+	apiKey       string
+	baseURL      string
+	model        string
+	temperature  float32
+	maxTokens    int
+	timeout      time.Duration
+	systemPrompt string
 }
 
 // Option configures the service
@@ -92,6 +93,22 @@ func WithOllamaConfig(baseURL string) Option {
 	return func(c *config) {
 		c.baseURL = baseURL
 		c.provider = ProviderOllama
+	}
+}
+
+// WithAnthropicConfig sets Anthropic-specific config
+func WithAnthropicConfig(apiKey, baseURL string) Option {
+	return func(c *config) {
+		c.apiKey = apiKey
+		c.baseURL = baseURL
+		c.provider = ProviderAnthropic
+	}
+}
+
+// WithSystemPrompt sets the system prompt for the LLM
+func WithSystemPrompt(prompt string) Option {
+	return func(c *config) {
+		c.systemPrompt = prompt
 	}
 }
 
