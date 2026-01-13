@@ -6,13 +6,34 @@ filename: "mock_{{.InterfaceName | snakecase}}.go"
 resolve-type-alias: false
 disable-version-string: true
 issue-845-fix: true
+recursive: true
+all: false
 
 packages:
   github.com/JoshuaPangaribuan/dbot/internal/pkg/logger:
     interfaces:
       Logger:
-      
+
+  github.com/JoshuaPangaribuan/dbot/internal/pkg/config:
+    interfaces:
+      Config:
+
   github.com/JoshuaPangaribuan/dbot/internal/pkg/discord:
     interfaces:
       Feature:
       CommandProvider:
+
+  github.com/JoshuaPangaribuan/dbot/internal/pkg/discord/middleware:
+    interfaces:
+      EventPermissionChecker:
+
+  github.com/JoshuaPangaribuan/dbot/internal/pkg/langchain:
+    interfaces:
+      LLM:
+      Service:
+      VectorStore:
+      Tool:
+
+  github.com/JoshuaPangaribuan/dbot/internal/features/levelling/service:
+    interfaces:
+      Service:
