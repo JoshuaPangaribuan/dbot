@@ -42,60 +42,17 @@ func (c *Context) State() *StateStore { return c.state }
 
 // GuildID returns the guild ID where the event occurred, or empty for DMs.
 func (c *Context) GuildID() string {
-	switch data := c.event.Data().(type) {
-	case *discordgo.MessageCreate:
-		return data.GuildID
-	case *discordgo.InteractionCreate:
-		return data.GuildID
-	case *discordgo.VoiceStateUpdate:
-		return data.GuildID
-	case *discordgo.MessageReactionAdd:
-		return data.GuildID
-	case *discordgo.MessageReactionRemove:
-		return data.GuildID
-	}
-	return ""
+	return ExtractGuildID(c.event)
 }
 
 // ChannelID returns the channel ID where the event occurred.
 func (c *Context) ChannelID() string {
-	switch data := c.event.Data().(type) {
-	case *discordgo.MessageCreate:
-		return data.ChannelID
-	case *discordgo.InteractionCreate:
-		return data.ChannelID
-	case *discordgo.VoiceStateUpdate:
-		return data.ChannelID
-	case *discordgo.MessageReactionAdd:
-		return data.ChannelID
-	case *discordgo.MessageReactionRemove:
-		return data.ChannelID
-	}
-	return ""
+	return ExtractChannelID(c.event)
 }
 
 // UserID returns the user ID who triggered the event.
 func (c *Context) UserID() string {
-	switch data := c.event.Data().(type) {
-	case *discordgo.MessageCreate:
-		if data.Author != nil {
-			return data.Author.ID
-		}
-	case *discordgo.InteractionCreate:
-		if data.Member != nil && data.Member.User != nil {
-			return data.Member.User.ID
-		}
-		if data.User != nil {
-			return data.User.ID
-		}
-	case *discordgo.VoiceStateUpdate:
-		return data.UserID
-	case *discordgo.MessageReactionAdd:
-		return data.UserID
-	case *discordgo.MessageReactionRemove:
-		return data.UserID
-	}
-	return ""
+	return ExtractUserID(c.event)
 }
 
 // User returns the user who triggered the event.

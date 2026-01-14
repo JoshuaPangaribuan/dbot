@@ -191,3 +191,15 @@ func (b *Builder) Modal(m *Modal) error {
 	}
 	return nil
 }
+
+// SendEphemeralError sends an ephemeral error message response for an interaction.
+// This is a convenience function for common error response patterns in middleware.
+func SendEphemeralError(session *discordgo.Session, interaction *discordgo.Interaction, message string) error {
+	return session.InteractionRespond(interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: message,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+}

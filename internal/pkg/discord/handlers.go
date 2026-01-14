@@ -18,52 +18,37 @@ type ReactionHandler func(ctx context.Context, r *ReactionContext) error
 // CommandOption configures a slash command option.
 type CommandOption func(*discordgo.ApplicationCommandOption)
 
-// StringOption creates a required or optional string option.
-func StringOption(name, description string, required bool) CommandOption {
+// option creates a command option with the specified type, name, description, and required flag.
+func option(optType discordgo.ApplicationCommandOptionType, name, description string, required bool) CommandOption {
 	return func(opt *discordgo.ApplicationCommandOption) {
-		opt.Type = discordgo.ApplicationCommandOptionString
+		opt.Type = optType
 		opt.Name = name
 		opt.Description = description
 		opt.Required = required
 	}
+}
+
+// StringOption creates a required or optional string option.
+func StringOption(name, description string, required bool) CommandOption {
+	return option(discordgo.ApplicationCommandOptionString, name, description, required)
 }
 
 // IntOption creates a required or optional integer option.
 func IntOption(name, description string, required bool) CommandOption {
-	return func(opt *discordgo.ApplicationCommandOption) {
-		opt.Type = discordgo.ApplicationCommandOptionInteger
-		opt.Name = name
-		opt.Description = description
-		opt.Required = required
-	}
+	return option(discordgo.ApplicationCommandOptionInteger, name, description, required)
 }
 
 // UserOption creates a required or optional user option.
 func UserOption(name, description string, required bool) CommandOption {
-	return func(opt *discordgo.ApplicationCommandOption) {
-		opt.Type = discordgo.ApplicationCommandOptionUser
-		opt.Name = name
-		opt.Description = description
-		opt.Required = required
-	}
+	return option(discordgo.ApplicationCommandOptionUser, name, description, required)
 }
 
 // BoolOption creates a required or optional boolean option.
 func BoolOption(name, description string, required bool) CommandOption {
-	return func(opt *discordgo.ApplicationCommandOption) {
-		opt.Type = discordgo.ApplicationCommandOptionBoolean
-		opt.Name = name
-		opt.Description = description
-		opt.Required = required
-	}
+	return option(discordgo.ApplicationCommandOptionBoolean, name, description, required)
 }
 
 // ChannelOption creates a required or optional channel option.
 func ChannelOption(name, description string, required bool) CommandOption {
-	return func(opt *discordgo.ApplicationCommandOption) {
-		opt.Type = discordgo.ApplicationCommandOptionChannel
-		opt.Name = name
-		opt.Description = description
-		opt.Required = required
-	}
+	return option(discordgo.ApplicationCommandOptionChannel, name, description, required)
 }

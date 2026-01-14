@@ -457,7 +457,35 @@ func (b *Bot) RegisterFeature(f Feature) error {
 
 // Open connects to Discord and registers all commands.
 func (b *Bot) Open() error {
-	// Check and transition state atomically
+	if err := b.transitionToOpen(); err != nil {
+		return err
+	}
+
+	sessions, err := b.buildShardSessions()
+	if err != nil {
+		b.revertState()
+		return err
+	}
+
+	if err := b.openSessionsWithSharding(sessions); err != nil {
+		b.closeAllSessions(sessions)
+		b.revertState()
+		return err
+	}
+
+	b.storeSessions(sessions)
+
+	if err := b.syncCommands(); err != nil {
+		b.closeAllSessionsWithError(sessions)
+		b.revertState()
+		return fmt.Errorf("discord: sync commands: %w", err)
+	}
+
+	return nil
+}
+
+// transitionToOpen attempts to transition the bot state from New to Open.
+func (b *Bot) transitionToOpen() error {
 	if !b.state.CompareAndSwap(int32(stateNew), int32(stateOpen)) {
 		currentState := b.getState()
 		if currentState == stateOpen {
@@ -465,60 +493,56 @@ func (b *Bot) Open() error {
 		}
 		return errors.New("discord: bot has been closed")
 	}
+	return nil
+}
 
-	// Build shard sessions (may call REST to fetch GatewayBot info).
-	sessions, err := b.buildShardSessions()
-	if err != nil {
-		b.state.Store(int32(stateNew)) // Revert state
-		return err
-	}
+// revertState reverts the bot state to New.
+func (b *Bot) revertState() {
+	b.state.Store(int32(stateNew))
+}
 
-	// Open sessions WITHOUT holding the lock (network calls).
-	if err := b.openSessionsWithSharding(sessions); err != nil {
-		for _, s := range sessions {
-			if s != nil {
-				_ = s.Close()
-			}
-		}
-		b.state.Store(int32(stateNew)) // Revert state
-		return err
-	}
-
-	// Store sessions under lock only after successful startup.
+// storeSessions stores the active sessions and updates the primary session reference.
+func (b *Bot) storeSessions(sessions []*discordgo.Session) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.sessions = sessions
 	// Keep b.session pointing at the primary (shard 0) session when present.
 	for _, s := range sessions {
 		if s != nil && s.ShardID == 0 {
 			b.session = s
-			break
+			return
 		}
 	}
 	// If shard 0 isn't present (custom shard sets), fall back to the first session.
-	if b.session == nil && len(sessions) > 0 {
+	if len(sessions) > 0 && sessions[0] != nil {
 		b.session = sessions[0]
 	}
-	b.mu.Unlock()
+}
 
-	// Sync commands WITHOUT holding the lock (network call)
-	if err := b.syncCommands(); err != nil {
-		for _, s := range sessions {
-			if s == nil {
-				continue
-			}
-			if closeErr := s.Close(); closeErr != nil {
-				b.logger.Error(context.Background(), "failed to close session after sync commands failure", logger.Fields{
-					"component": "discord",
-					"error":     closeErr.Error(),
-					"shard_id":  s.ShardID,
-				})
-			}
+// closeAllSessions closes all sessions without error logging.
+func (b *Bot) closeAllSessions(sessions []*discordgo.Session) {
+	for _, s := range sessions {
+		if s != nil {
+			_ = s.Close()
 		}
-		b.state.Store(int32(stateNew)) // Revert state
-		return fmt.Errorf("discord: sync commands: %w", err)
 	}
+}
 
-	return nil
+// closeAllSessionsWithError closes all sessions with error logging.
+func (b *Bot) closeAllSessionsWithError(sessions []*discordgo.Session) {
+	for _, s := range sessions {
+		if s == nil {
+			continue
+		}
+		if closeErr := s.Close(); closeErr != nil {
+			b.logger.Error(context.Background(), "failed to close session after sync commands failure", logger.Fields{
+				"component": "discord",
+				"error":     closeErr.Error(),
+				"shard_id":  s.ShardID,
+			})
+		}
+	}
 }
 
 // Close disconnects from Discord, shuts down features, and removes registered commands.
@@ -653,45 +677,21 @@ func (b *Bot) buildShardSessions() ([]*discordgo.Session, error) {
 	}
 
 	// Auto-determine shard count and/or max concurrency using GatewayBot.
-	if useGatewayBot && (autoShards || shardCount > 1) {
-		gb, err := baseSession.GatewayBot()
-		if err != nil {
-			if autoShards {
-				return nil, fmt.Errorf("discord: fetch gateway bot info: %w", err)
-			}
-			// Non-fatal if sharding is configured explicitly; we'll fall back to safe defaults.
-		} else {
-			if autoShards {
-				shardCount = gb.Shards
-			}
-			if maxConcurrency <= 0 {
-				maxConcurrency = gb.SessionStartLimit.MaxConcurrency
-			}
-
-			if gb.SessionStartLimit.Remaining < shardCount {
-				return nil, fmt.Errorf(
-					"discord: session start limit too low to start %d shards (remaining=%d reset_after=%dms)",
-					shardCount,
-					gb.SessionStartLimit.Remaining,
-					gb.SessionStartLimit.ResetAfter,
-				)
-			}
-
-			b.logger.Info(context.Background(), "gateway bot info", logger.Fields{
-				"component":       "discord",
-				"recommended":     gb.Shards,
-				"max_concurrency": gb.SessionStartLimit.MaxConcurrency,
-				"remaining":       gb.SessionStartLimit.Remaining,
-				"reset_after_ms":  gb.SessionStartLimit.ResetAfter,
-			})
-		}
+	var err error
+	shardCount, maxConcurrency, err = b.configureGatewayBot(baseSession, autoShards, shardCount, maxConcurrency)
+	if err != nil {
+		return nil, err
 	}
 
+	// Apply defaults
 	if shardCount < 1 {
 		shardCount = 1
 	}
 	if identifyDelay <= 0 {
 		identifyDelay = 5 * time.Second
+	}
+	if maxConcurrency <= 0 {
+		maxConcurrency = 1
 	}
 
 	// Non-sharded.
@@ -701,11 +701,66 @@ func (b *Bot) buildShardSessions() ([]*discordgo.Session, error) {
 		return []*discordgo.Session{baseSession}, nil
 	}
 
-	// Default max concurrency for safety if GatewayBot wasn't available.
-	if maxConcurrency <= 0 {
-		maxConcurrency = 1
+	// Configure and create shard sessions.
+	sessions, err := b.createShardSessions(baseSession, shardCount)
+	if err != nil {
+		return nil, err
 	}
 
+	// Persist the runtime sharding knobs for startup/metrics.
+	b.mu.Lock()
+	b.shardCount = shardCount
+	b.maxConcurrency = maxConcurrency
+	b.identifyDelay = identifyDelay
+	b.mu.Unlock()
+
+	return sessions, nil
+}
+
+// configureGatewayBot fetches GatewayBot info and returns updated shard count and max concurrency.
+func (b *Bot) configureGatewayBot(baseSession *discordgo.Session, autoShards bool, shardCount, maxConcurrency int) (int, int, error) {
+	if !b.useGatewayBot || (!autoShards && shardCount <= 1) {
+		return shardCount, maxConcurrency, nil
+	}
+
+	gb, err := baseSession.GatewayBot()
+	if err != nil {
+		if autoShards {
+			return 0, 0, fmt.Errorf("discord: fetch gateway bot info: %w", err)
+		}
+		// Non-fatal if sharding is configured explicitly; we'll fall back to safe defaults.
+		return shardCount, maxConcurrency, nil
+	}
+
+	if autoShards {
+		shardCount = gb.Shards
+	}
+	if maxConcurrency <= 0 {
+		maxConcurrency = gb.SessionStartLimit.MaxConcurrency
+	}
+
+	if gb.SessionStartLimit.Remaining < shardCount {
+		return 0, 0, fmt.Errorf(
+			"discord: session start limit too low to start %d shards (remaining=%d reset_after=%dms)",
+			shardCount,
+			gb.SessionStartLimit.Remaining,
+			gb.SessionStartLimit.ResetAfter,
+		)
+	}
+
+	b.logger.Info(context.Background(), "gateway bot info", logger.Fields{
+		"component":       "discord",
+		"recommended":     gb.Shards,
+		"max_concurrency": gb.SessionStartLimit.MaxConcurrency,
+		"remaining":       gb.SessionStartLimit.Remaining,
+		"reset_after_ms":  gb.SessionStartLimit.ResetAfter,
+	})
+
+	return shardCount, maxConcurrency, nil
+}
+
+// createShardSessions creates all shard sessions including the base session as shard 0.
+func (b *Bot) createShardSessions(baseSession *discordgo.Session, shardCount int) ([]*discordgo.Session, error) {
 	// Ensure the base session is shard 0.
 	baseSession.ShardID = 0
 	baseSession.ShardCount = shardCount
@@ -721,13 +776,6 @@ func (b *Bot) buildShardSessions() ([]*discordgo.Session, error) {
 		}
 		sessions = append(sessions, s)
 	}
-
-	// Persist the runtime sharding knobs for startup/metrics.
-	b.mu.Lock()
-	b.shardCount = shardCount
-	b.maxConcurrency = maxConcurrency
-	b.identifyDelay = identifyDelay
-	b.mu.Unlock()
 
 	return sessions, nil
 }

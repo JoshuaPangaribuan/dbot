@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord"
+	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord/reply"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -19,7 +20,7 @@ func RateLimit(requests int, window time.Duration) discord.MiddlewareFunc {
 	limiter := newRateLimiter(requests, window)
 
 	return func(ctx context.Context, e *discord.Event, next func() error) error {
-		userID := getUserID(e)
+		userID := discord.ExtractUserID(e)
 		if userID == "" {
 			return next() // Can't determine user, let it through
 		}
@@ -27,13 +28,7 @@ func RateLimit(requests int, window time.Duration) discord.MiddlewareFunc {
 		if !limiter.allow(userID) {
 			// Rate limited
 			if ic, ok := e.Data().(*discordgo.InteractionCreate); ok {
-				_ = e.Session().InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: "You're doing that too fast. Please slow down.",
-						Flags:   discordgo.MessageFlagsEphemeral,
-					},
-				})
+				_ = reply.SendEphemeralError(e.Session(), ic.Interaction, "You're doing that too fast. Please slow down.")
 			}
 			return nil
 		}
@@ -42,28 +37,6 @@ func RateLimit(requests int, window time.Duration) discord.MiddlewareFunc {
 	}
 }
 
-func getUserID(e *discord.Event) string {
-	switch data := e.Data().(type) {
-	case *discordgo.MessageCreate:
-		if data.Author != nil {
-			return data.Author.ID
-		}
-	case *discordgo.InteractionCreate:
-		if data.Member != nil && data.Member.User != nil {
-			return data.Member.User.ID
-		}
-		if data.User != nil {
-			return data.User.ID
-		}
-	case *discordgo.MessageReactionAdd:
-		return data.UserID
-	case *discordgo.MessageReactionRemove:
-		return data.UserID
-	case *discordgo.VoiceStateUpdate:
-		return data.UserID
-	}
-	return ""
-}
 
 // rateLimiter implements a sliding window rate limiter.
 type rateLimiter struct {

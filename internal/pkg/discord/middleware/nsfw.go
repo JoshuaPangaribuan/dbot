@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord"
+	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord/reply"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -12,7 +13,7 @@ import (
 // For messages, it will silently skip.
 func RequireNSFW() discord.MiddlewareFunc {
 	return func(ctx context.Context, e *discord.Event, next func() error) error {
-		channelID := getChannelID(e)
+		channelID := discord.ExtractChannelID(e)
 		if channelID == "" {
 			return next() // Can't determine channel, let it through
 		}
@@ -25,14 +26,7 @@ func RequireNSFW() discord.MiddlewareFunc {
 		if !channel.NSFW {
 			// Not an NSFW channel
 			if ic, ok := e.Data().(*discordgo.InteractionCreate); ok {
-				// For interactions, send ephemeral error
-				_ = e.Session().InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: "This command can only be used in NSFW channels.",
-						Flags:   discordgo.MessageFlagsEphemeral,
-					},
-				})
+				_ = reply.SendEphemeralError(e.Session(), ic.Interaction, "This command can only be used in NSFW channels.")
 			}
 			return nil
 		}
@@ -41,16 +35,3 @@ func RequireNSFW() discord.MiddlewareFunc {
 	}
 }
 
-func getChannelID(e *discord.Event) string {
-	switch data := e.Data().(type) {
-	case *discordgo.MessageCreate:
-		return data.ChannelID
-	case *discordgo.InteractionCreate:
-		return data.ChannelID
-	case *discordgo.MessageReactionAdd:
-		return data.ChannelID
-	case *discordgo.MessageReactionRemove:
-		return data.ChannelID
-	}
-	return ""
-}

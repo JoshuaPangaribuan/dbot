@@ -7,6 +7,7 @@ import (
 
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/config"
 	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord"
+	"github.com/JoshuaPangaribuan/dbot/internal/pkg/discord/reply"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -27,29 +28,20 @@ func NewHybridPermissionChecker(cfg config.Config) *HybridPermissionChecker {
 
 // HasPermissionForEvent checks if the user has the specified permission for an event.
 func (h *HybridPermissionChecker) HasPermissionForEvent(ctx context.Context, e *discord.Event, permission string) bool {
-	var userID string
-	var member *discordgo.Member
-	var guildID string
-
-	switch data := e.Data().(type) {
-	case *discordgo.InteractionCreate:
-		if data.Member != nil && data.Member.User != nil {
-			userID = data.Member.User.ID
-			member = data.Member
-		} else if data.User != nil {
-			userID = data.User.ID
-		}
-		guildID = data.GuildID
-	case *discordgo.MessageCreate:
-		if data.Author != nil {
-			userID = data.Author.ID
-		}
-		member = data.Member
-		guildID = data.GuildID
-	}
-
+	userID := discord.ExtractUserID(e)
 	if userID == "" {
 		return false
+	}
+
+	var member *discordgo.Member
+	guildID := discord.ExtractGuildID(e)
+
+	// Extract member information from the event
+	switch data := e.Data().(type) {
+	case *discordgo.InteractionCreate:
+		member = data.Member
+	case *discordgo.MessageCreate:
+		member = data.Member
 	}
 
 	// Check config first
@@ -99,13 +91,7 @@ func RequireEventPermission(checker EventPermissionChecker, permission string) d
 		if !checker.HasPermissionForEvent(ctx, e, permission) {
 			// For interactions, send ephemeral error response
 			if ic, ok := e.Data().(*discordgo.InteractionCreate); ok {
-				_ = e.Session().InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Content: "You don't have permission to use this command.",
-						Flags:   discordgo.MessageFlagsEphemeral,
-					},
-				})
+				_ = reply.SendEphemeralError(e.Session(), ic.Interaction, "You don't have permission to use this command.")
 			}
 			return nil
 		}
@@ -123,13 +109,7 @@ func RequireAnyEventPermission(checker EventPermissionChecker, permissions ...st
 		}
 		// For interactions, send ephemeral error response
 		if ic, ok := e.Data().(*discordgo.InteractionCreate); ok {
-			_ = e.Session().InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "You don't have permission to use this command.",
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
+			_ = reply.SendEphemeralError(e.Session(), ic.Interaction, "You don't have permission to use this command.")
 		}
 		return nil
 	}
