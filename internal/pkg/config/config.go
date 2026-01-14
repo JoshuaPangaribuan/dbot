@@ -13,7 +13,6 @@ const (
 )
 
 type Config interface {
-	Get(key string) string
 	GetInt(key string) int
 	GetBool(key string) bool
 	GetInt64(key string) int64

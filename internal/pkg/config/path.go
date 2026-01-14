@@ -1,19 +1,18 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
-	"runtime"
 )
 
-// toRelativePath converts an absolute path to a relative path from the project root.
+// toRelativePath converts an absolute path to a relative path from cwd.
+// This is used for error messages to be more user-friendly.
 func toRelativePath(absPath string) string {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
+	cwd, err := os.Getwd()
+	if err != nil {
 		return absPath
 	}
-	// Go up from internal/pkg/config to project root
-	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(file))))
-	rel, err := filepath.Rel(projectRoot, absPath)
+	rel, err := filepath.Rel(cwd, absPath)
 	if err != nil {
 		return absPath
 	}
