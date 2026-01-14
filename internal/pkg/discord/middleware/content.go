@@ -149,4 +149,3 @@ func CapsFilter(threshold float64, minLength int) ContentFilter {
 		return float64(caps)/float64(total) > threshold
 	}
 }
-

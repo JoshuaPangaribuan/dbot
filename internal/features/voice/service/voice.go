@@ -48,7 +48,7 @@ type VoiceService interface {
 type Track struct {
 	URL      string
 	Title    string
-	Duration int // Duration in seconds
+	Duration int    // Duration in seconds
 	Source   string // "youtube", "local", etc.
 	UserID   string // User who requested the track
 }

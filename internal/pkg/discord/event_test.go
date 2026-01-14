@@ -151,9 +151,9 @@ func TestEventBus_Subscribe(t *testing.T) {
 
 func TestEventBus_Publish_Priority(t *testing.T) {
 	tests := []struct {
-		name           string
-		priorities     []int
-		expectedOrder  []int
+		name          string
+		priorities    []int
+		expectedOrder []int
 	}{
 		{
 			name:          "single handler",
@@ -318,18 +318,18 @@ func TestEventBus_Publish_Middleware(t *testing.T) {
 
 func TestEventBus_Publish_MiddlewareShortCircuit(t *testing.T) {
 	tests := []struct {
-		name          string
-		callNext      bool
+		name              string
+		callNext          bool
 		wantHandlerCalled bool
 	}{
 		{
-			name:          "middleware calls next",
-			callNext:      true,
+			name:              "middleware calls next",
+			callNext:          true,
 			wantHandlerCalled: true,
 		},
 		{
-			name:          "middleware short-circuits",
-			callNext:      false,
+			name:              "middleware short-circuits",
+			callNext:          false,
 			wantHandlerCalled: false,
 		},
 	}

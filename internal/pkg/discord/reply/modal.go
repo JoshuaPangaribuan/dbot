@@ -90,4 +90,3 @@ func WithRequired(required bool) TextInputOption {
 		ti.Required = required
 	}
 }
-

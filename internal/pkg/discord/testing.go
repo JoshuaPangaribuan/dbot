@@ -61,4 +61,3 @@ func (b *Bot) CommandCount() int {
 	defer b.mu.RUnlock()
 	return len(b.commands)
 }
-

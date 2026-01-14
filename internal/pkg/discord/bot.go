@@ -55,11 +55,11 @@ type Bot struct {
 	guildID string // empty for global commands
 
 	// Sharding config
-	shardCount      int
-	autoShards      bool
-	useGatewayBot   bool
-	identifyDelay   time.Duration
-	maxConcurrency  int
+	shardCount     int
+	autoShards     bool
+	useGatewayBot  bool
+	identifyDelay  time.Duration
+	maxConcurrency int
 
 	// Lifecycle state (atomic for lock-free reads)
 	state atomic.Int32
@@ -678,11 +678,11 @@ func (b *Bot) buildShardSessions() ([]*discordgo.Session, error) {
 			}
 
 			b.logger.Info(context.Background(), "gateway bot info", logger.Fields{
-				"component":        "discord",
-				"recommended":      gb.Shards,
-				"max_concurrency":  gb.SessionStartLimit.MaxConcurrency,
-				"remaining":        gb.SessionStartLimit.Remaining,
-				"reset_after_ms":   gb.SessionStartLimit.ResetAfter,
+				"component":       "discord",
+				"recommended":     gb.Shards,
+				"max_concurrency": gb.SessionStartLimit.MaxConcurrency,
+				"remaining":       gb.SessionStartLimit.Remaining,
+				"reset_after_ms":  gb.SessionStartLimit.ResetAfter,
 			})
 		}
 	}

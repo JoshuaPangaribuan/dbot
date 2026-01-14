@@ -13,12 +13,12 @@ import (
 
 // Config configures the voice feature.
 type Config struct {
-	Enabled          bool     // Enable voice feature
-	DefaultVolume    int      // Default volume (0-100)
-	MaxQueueSize     int      // Maximum tracks in queue
-	YouTubeEnabled   bool     // Enable YouTube audio source
-	LocalFilesEnabled bool    // Enable local file uploads
-	AllowedChannels  []string // Whitelist voice channel IDs (empty = all channels)
+	Enabled           bool     // Enable voice feature
+	DefaultVolume     int      // Default volume (0-100)
+	MaxQueueSize      int      // Maximum tracks in queue
+	YouTubeEnabled    bool     // Enable YouTube audio source
+	LocalFilesEnabled bool     // Enable local file uploads
+	AllowedChannels   []string // Whitelist voice channel IDs (empty = all channels)
 }
 
 // DefaultConfig returns sensible defaults.
@@ -42,9 +42,9 @@ type Deps struct {
 
 // Feature wires together the voice feature components.
 type Feature struct {
-	svc      service.VoiceService
-	persist  *persistence.Persist
-	handler  *handlers.Handler
+	svc     service.VoiceService
+	persist *persistence.Persist
+	handler *handlers.Handler
 }
 
 // Register sets up the voice feature with the bot.

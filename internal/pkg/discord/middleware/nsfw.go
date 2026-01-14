@@ -54,4 +54,3 @@ func getChannelID(e *discord.Event) string {
 	}
 	return ""
 }
-

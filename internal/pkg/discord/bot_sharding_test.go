@@ -62,4 +62,3 @@ func TestBot_buildShardSessions_AutoShardingRequiresGatewayBot(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "auto sharding requires GatewayBot")
 }
-

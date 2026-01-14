@@ -478,4 +478,3 @@ func (rc *ReactionContext) IsRemoved() bool { return rc.removed }
 
 // ReactionMember returns the member who added the reaction (only for add events in guilds).
 func (rc *ReactionContext) ReactionMember() *discordgo.Member { return rc.member }
-

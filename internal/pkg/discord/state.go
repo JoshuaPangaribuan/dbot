@@ -114,4 +114,3 @@ func (s *ScopedState) Delete(key string) {
 func (s *ScopedState) GetOrSet(key string, factory func() interface{}) interface{} {
 	return s.store.GetOrSet(s.prefix+key, factory)
 }
-
